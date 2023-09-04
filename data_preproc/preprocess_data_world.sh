@@ -1,0 +1,1 @@
+python preprocess_data.py --input /root/autodl-tmp/databricks-dolly-15k.jsonl --output-prefix /root/autodl-tmp/dollytest --vocab rwkv_vocab_v20230424.txt --dataset-impl mmap --tokenizer-type RWKVTokenizer --append-eod

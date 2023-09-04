@@ -12,6 +12,8 @@ vocab.json
 test/
 tools/
 
+run_dir/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
