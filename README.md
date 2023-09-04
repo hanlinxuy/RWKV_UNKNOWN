@@ -1,1 +1,12 @@
 # RWKV_UNKNOWN
+
+This is my implementation of RWKV language model.
+
+
+# RWKV: Parallelizable RNN with Transformer-level LLM Performance (pronounced as "RwaKuv", from 4 major params: R W K V)
+
+Please visit: https://github.com/BlinkDL/RWKV-LM
+
+# Reference
+- For easy usage, I just copy data preprocessor from [TrainChatGalRWKV](https://github.com/SynthiaDL/TrainChatGalRWKV/)
+- Thanks to [neromous](https://github.com/neromous/) for the initaial code.
