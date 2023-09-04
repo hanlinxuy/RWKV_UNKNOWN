@@ -68,9 +68,7 @@ class RotaryEmbedding(torch.nn.Module):
 
 def rotate_half(x):
     x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
-    return torch.cat(
-        (-x2, x1), dim=x1.ndim - 1
-    )  # dim=-1 triggers a bug in earlier torch versions
+    return torch.cat((-x2, x1), dim=x1.ndim - 1)  # dim=-1 triggers a bug in earlier torch versions
 
 
 @torch.jit.script
@@ -82,9 +80,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
     return (q * cos) + (rotate_half(q) * sin), (k * cos) + (rotate_half(k) * sin)
 
 
-def apply_rotary_pos_emb_torch(
-    q, k, cos, sin, offset: int = 0
-):  # jitting fails with bf16
+def apply_rotary_pos_emb_torch(q, k, cos, sin, offset: int = 0):  # jitting fails with bf16
     cos, sin = (
         cos[offset : q.shape[0] + offset, ...],
         sin[offset : q.shape[0] + offset, ...],
@@ -104,9 +100,7 @@ class AliBi(torch.nn.Module):
         self.slice_size = num_heads // mp_size
         self.cached_matrix = None
         self.cached_seq_len = None
-        slopes = torch.Tensor(self._get_slopes(num_heads))[
-            mp_rank * self.slice_size : (mp_rank + 1) * self.slice_size
-        ]
+        slopes = torch.Tensor(self._get_slopes(num_heads))[mp_rank * self.slice_size : (mp_rank + 1) * self.slice_size]
         self.register_buffer("slopes", slopes)
 
     def _get_slopes(self, n):
@@ -127,9 +121,7 @@ class AliBi(torch.nn.Module):
             closest_power_of_2 = 2 ** math.floor(math.log2(n))
             return (
                 get_slopes_power_of_2(closest_power_of_2)
-                + self._get_slopes(2 * closest_power_of_2)[0::2][
-                    : n - closest_power_of_2
-                ]
+                + self._get_slopes(2 * closest_power_of_2)[0::2][: n - closest_power_of_2]
             )
 
     def bias(self, seq_len_q, seq_len_k, device, dtype):
@@ -143,13 +135,9 @@ class AliBi(torch.nn.Module):
         if self.cached_seq_len is not None and self.cached_seq_len >= seq_len_k:
             a = self.cached_matrix
         else:
-            target_seq_len = (
-                seq_len_k if self.cached_seq_len is None else self.cached_seq_len * 4
-            )
+            target_seq_len = seq_len_k if self.cached_seq_len is None else self.cached_seq_len * 4
             a = -torch.tril(
-                torch.arange(target_seq_len)
-                .view(target_seq_len, 1)
-                .repeat(1, target_seq_len)
+                torch.arange(target_seq_len).view(target_seq_len, 1).repeat(1, target_seq_len)
                 + torch.arange(0, -target_seq_len, -1)
             )
             a = a.to(device).to(dtype)
@@ -168,9 +156,7 @@ class AliBi(torch.nn.Module):
             # At inference time with cache in layer_past sq is not equal to sk. sq only contains one token (the last one in the full sequence)
             # In this case we use the appropriate token index of the cache matrix.
             # As the cache matrix could already be bigger from a past inference, not the last token index in the sq sequence is used
-            assert (
-                seq_len_q == 1
-            ), "assumption sq == sk unless at inference time with cache in layer_past with sq == 1"
+            assert seq_len_q == 1, "assumption sq == sk unless at inference time with cache in layer_past with sq == 1"
             a = a[:, seq_len_k - 1, :].view(
                 a.shape[0], 1, a.shape[2]
             )  # seq_len_k - 1 points to the last token index in the current inference batch.
@@ -188,13 +174,9 @@ class AliBi(torch.nn.Module):
         if self.cached_seq_len is not None and self.cached_seq_len >= seq_len_k:
             a = self.cached_matrix
         else:
-            target_seq_len = (
-                seq_len_k if self.cached_seq_len is None else self.cached_seq_len * 4
-            )
+            target_seq_len = seq_len_k if self.cached_seq_len is None else self.cached_seq_len * 4
             a = -torch.tril(
-                torch.arange(target_seq_len)
-                .view(target_seq_len, 1)
-                .repeat(1, target_seq_len)
+                torch.arange(target_seq_len).view(target_seq_len, 1).repeat(1, target_seq_len)
                 + torch.arange(0, -target_seq_len, -1)
             )
             a = a.to(x.device).to(x.dtype)
@@ -213,9 +195,7 @@ class AliBi(torch.nn.Module):
             # At inference time with cache in layer_past sq is not equal to sk. sq only contains one token (the last one in the full sequence)
             # In this case we use the appropriate token index of the cache matrix.
             # As the cache matrix could already be bigger from a past inference, not the last token index in the sq sequence is used
-            assert (
-                seq_len_q == 1
-            ), "assumption sq == sk unless at inference time with cache in layer_past with sq == 1"
+            assert seq_len_q == 1, "assumption sq == sk unless at inference time with cache in layer_past with sq == 1"
             a = a[:, seq_len_k - 1, :].view(
                 a.shape[0], 1, a.shape[2]
             )  # seq_len_k - 1 points to the last token index in the current inference batch.

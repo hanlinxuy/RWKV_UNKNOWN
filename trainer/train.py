@@ -1,5 +1,6 @@
 import os, warnings, math, datetime, sys, time
 import numpy as np
+
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 import torch
 from torch.utils.data import DataLoader
@@ -8,6 +9,7 @@ from src.dataset_finetune import MyDataset
 import types
 from tqdm import tqdm
 import random
+
 
 def init_args(args):
     if args.random_seed >= 0:
@@ -18,23 +20,23 @@ def init_args(args):
         args.load_model = get_model(args.proj_dir)
     args.epoch_begin = next_model(args.proj_dir)
     args.accumulate_grad_batches = 4
-    #args.max_epochs=1
+    # args.max_epochs=1
     args.my_timestamp = datetime.datetime.today().strftime("%Y-%m-%d-%H-%M-%S")
     args.enable_checkpointing = False
     args.replace_sampler_ddp = False
     args.logger = False
-    #args.gradient_clip_val = 1.0
-    #args.num_sanity_val_steps = 0
-    #args.check_val_every_n_epoch = int(1e20)
-    #args.log_every_n_steps = int(1e20)
-    #args.max_epochs = -1  # continue forever
-    #args.betas = (args.beta1, args.beta2)
+    # args.gradient_clip_val = 1.0
+    # args.num_sanity_val_steps = 0
+    # args.check_val_every_n_epoch = int(1e20)
+    # args.log_every_n_steps = int(1e20)
+    # args.max_epochs = -1  # continue forever
+    # args.betas = (args.beta1, args.beta2)
     # args.real_bsz = int(args.num_nodes) * int(args.devices) * args.micro_bsz
     # if args.dim_att <= 0:
     #     args.dim_att = args.n_embd
     # if args.dim_ffn <= 0:
     #     args.dim_ffn = args.n_embd * 4
-    #args.run_name = f"{args.vocab_size} ctx{args.ctx_len} L{args.n_layer} D{args.n_embd}"
+    # args.run_name = f"{args.vocab_size} ctx{args.ctx_len} L{args.n_layer} D{args.n_embd}"
 
     if not os.path.exists(args.proj_dir):
         os.makedirs(args.proj_dir)
@@ -48,14 +50,12 @@ def init_args(args):
     return args
 
 
-
-
 if __name__ == "__main__":
     from argparse import ArgumentParser
+
     # from pytorch_lightning import Trainer
     # from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
-    from utils import get_model,next_model
-
+    from utils import get_model, next_model
 
     args = types.SimpleNamespace()
 
@@ -75,9 +75,9 @@ if __name__ == "__main__":
     args.epoch_save = 5
     args.micro_bsz = 1
     args.n_layer = 32
-    args.n_embd =  2560
-    #args.dim_att = 0
-    #args.dim_ffn = 0
+    args.n_embd = 2560
+    # args.dim_att = 0
+    # args.dim_ffn = 0
     args.pre_ffn = 0
     args.grad_cp = 1
     args.weight_decay = 0
@@ -87,36 +87,36 @@ if __name__ == "__main__":
     args.my_pile_shift = -1
     args.my_pile_edecay = 0
     args.layerwise_lr = 1
-    #args.ds_bucket_mb = 200
+    # args.ds_bucket_mb = 200
     # args.cuda_cleanup = 0
 
-    #args.my_img_version = 0
-    #args.my_img_size = 0
-    #args.my_img_bit = 0
-    #args.my_img_clip = 'x'
-    #args.my_img_clip_scale = 1
-    #args.my_img_l1_scale = 0
-    #args.my_img_encoder = 'x'
+    # args.my_img_version = 0
+    # args.my_img_size = 0
+    # args.my_img_bit = 0
+    # args.my_img_clip = 'x'
+    # args.my_img_clip_scale = 1
+    # args.my_img_l1_scale = 0
+    # args.my_img_encoder = 'x'
     # args.my_img_noise_scale = 0
-    #args.my_sample_len = 0
-    #args.my_ffn_shift = 1
-    #args.my_att_shift = 1
+    # args.my_sample_len = 0
+    # args.my_ffn_shift = 1
+    # args.my_att_shift = 1
     args.my_pos_emb = 0
-    #args.load_partial = 0
-    #args.magic_prime = 0
-    #args.my_qa_mask = 0
-    #args.my_random_steps = 0
-    args.my_testing = ''
-    #args.my_exit = 99999999
-    #args.my_exit_tokens = -1
+    # args.load_partial = 0
+    # args.magic_prime = 0
+    # args.my_qa_mask = 0
+    # args.my_random_steps = 0
+    args.my_testing = ""
+    # args.my_exit = 99999999
+    # args.my_exit_tokens = -1
 
     #
-    args.num_nodes =  1
+    args.num_nodes = 1
     args.devices = 1
     args.precision = "bf16"
 
-    args.strategy =  "deepspeed_stage_2_offload"
-    args =  init_args(args)
+    args.strategy = "deepspeed_stage_2_offload"
+    args = init_args(args)
 
     os.environ["RWKV_T_MAX"] = str(args.ctx_len)
     os.environ["RWKV_MY_TESTING"] = args.my_testing
@@ -124,17 +124,15 @@ if __name__ == "__main__":
     os.environ["RWKV_JIT_ON"] = "1"
     from src.model import RWKV
 
-
     #########################################################################
 
-    #samples_per_epoch = args.epoch_steps * args.real_bsz
-    #tokens_per_epoch = samples_per_epoch * args.ctx_len
+    # samples_per_epoch = args.epoch_steps * args.real_bsz
+    # tokens_per_epoch = samples_per_epoch * args.ctx_len
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.enabled = True
     # allow tf32
     torch.backends.cudnn.allow_tf32 = True
     torch.backends.cuda.matmul.allow_tf32 = True
-
 
     ##################################################################################
     train_data = MyDataset(args)
@@ -142,14 +140,13 @@ if __name__ == "__main__":
     model = RWKV(args)
     load_dict = torch.load(args.load_model, map_location="cpu")
     model.load_state_dict(load_dict)
-    model_engine,optimizer,_,_ = deepspeed.initialize(model = model,
-                                                      model_parameters=model.configure_optimizers(),
-                                                      config="ds_config.config")
-
+    model_engine, optimizer, _, _ = deepspeed.initialize(
+        model=model, model_parameters=model.configure_optimizers(), config="ds_config.config"
+    )
 
     for data in tqdm(train_data):
         # print("========",111)
-        loss,logits,layer_logits = model_engine(data)
+        loss, logits, layer_logits = model_engine(data)
         model.zero_grad()
         model_engine.backward(loss)
         model_engine.step()

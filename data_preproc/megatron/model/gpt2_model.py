@@ -112,9 +112,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
         self.parallel_output = parallel_output
         self.hidden_size = self.neox_args.hidden_size
         self.num_tokentypes = num_tokentypes
-        self.init_method, self.output_layer_init_method = get_init_methods(
-            self.neox_args
-        )
+        self.init_method, self.output_layer_init_method = get_init_methods(self.neox_args)
         self.__topology__ = topology
 
         self.specs = []
@@ -131,22 +129,16 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
             checkpointable_layers=["GMLPBlock", "ParallelTransformerLayerPipe"],
         )
 
-    def insert_layers(
-        self, layers: Union[nn.Module, nn.ModuleList, nn.Sequential, List], idx
-    ):
+    def insert_layers(self, layers: Union[nn.Module, nn.ModuleList, nn.Sequential, List], idx):
         """
         inserts the layers in `layers` into the pipe model at `idx`.
         """
         if isinstance(layers, nn.Module):
             self.specs.insert(idx, layers)
-        elif any(
-            [isinstance(layers, nn.ModuleList), isinstance(layers, nn.Sequential)]
-        ):
+        elif any([isinstance(layers, nn.ModuleList), isinstance(layers, nn.Sequential)]):
             self.specs[idx:idx] = layers
         elif isinstance(layers, list):
-            assert all(
-                [hasattr(l, "__call__") for l in layers]
-            ), "all items in `layers` must be Callables"
+            assert all([hasattr(l, "__call__") for l in layers]), "all items in `layers` must be Callables"
             self.specs[idx:idx] = layers
         else:
             raise ValueError(
@@ -164,7 +156,6 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
         )
 
     def init_specs(self):
-
         weight_tying = not self.neox_args.no_weight_tying
         self.specs = []
 
@@ -209,9 +200,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
 
         # T5 RPE positional embedding
         if self.neox_args.pos_emb == "rpe":
-            hidden_size_per_attention_head = mpu.divide(
-                self.neox_args.hidden_size, self.neox_args.num_attention_heads
-            )
+            hidden_size_per_attention_head = mpu.divide(self.neox_args.hidden_size, self.neox_args.num_attention_heads)
             rpe_scale = math.sqrt(hidden_size_per_attention_head)
             rpe_emb = ParallelRelativePositionBias(
                 neox_args=self.neox_args,
@@ -256,9 +245,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
 
         # NormPipe is a (deprecated) helper class that used to be used to pass presents along the pipeline - since presents are now cached to the `TransformerLayer` class this is no longer needed
         norm, eps = get_norm(self.neox_args)
-        self.specs.append(
-            LayerSpec(NormPipe, norm, self.neox_args.hidden_size, eps=eps)
-        )
+        self.specs.append(LayerSpec(NormPipe, norm, self.neox_args.hidden_size, eps=eps))
 
         # outputs are now a single tensor: hidden_states
 
@@ -267,14 +254,9 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
             if self.neox_args.use_mup:
                 # Since we're using pipeline parallelism, we can't directly use MuReadout. Instead, use this workaround that does the same thing as MuReadout.
                 # https://github.com/microsoft/mup/issues/6#issuecomment-1082156274
-                lm_output = (
-                    lm_output
-                    / self.tied_modules.embed.word_embeddings.weight.infshape.width_mult()
-                )
+                lm_output = lm_output / self.tied_modules.embed.word_embeddings.weight.infshape.width_mult()
 
-            logits = parallel_lm_logits(
-                lm_output, embedding.word_embeddings_weight, self.parallel_output
-            )
+            logits = parallel_lm_logits(lm_output, embedding.word_embeddings_weight, self.parallel_output)
             return logits
 
         if weight_tying:
@@ -349,9 +331,7 @@ class GPT2ModelPipe(PipelineModule, torch.nn.Module):
             if isinstance(spec, TiedLayerSpec):
                 if spec.key in tied_layers:
                     # receiver
-                    layers.append(
-                        Lambda(lambda x: spec.forward_fn(tied_layers[spec.key][0], x))
-                    )
+                    layers.append(Lambda(lambda x: spec.forward_fn(tied_layers[spec.key][0], x)))
                 else:
                     # owner
                     module = spec.build(log=False)

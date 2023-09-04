@@ -54,10 +54,7 @@ def initialize_megatron(neox_args, allow_no_cuda=False):
         _set_random_seed(neox_args.seed)
 
     # check fused kernels are installed:
-    if (
-        neox_args.scaled_upper_triang_masked_softmax_fusion
-        or neox_args.scaled_masked_softmax_fusion
-    ):
+    if neox_args.scaled_upper_triang_masked_softmax_fusion or neox_args.scaled_masked_softmax_fusion:
         fused_kernels.load_fused_kernels()
 
     if neox_args.lazy_mpu_init:
@@ -99,11 +96,7 @@ def setup_deepspeed_random_and_activation_checkpointing(neox_args):
     This must be called before all the calls to mpu.model_parallel_cuda_manual_seed
     """
     num_layers = neox_args.num_layers // neox_args.checkpoint_num_layers
-    num_layers = (
-        num_layers
-        if neox_args.num_layers % neox_args.checkpoint_num_layers == 0
-        else num_layers + 1
-    )
+    num_layers = num_layers if neox_args.num_layers % neox_args.checkpoint_num_layers == 0 else num_layers + 1
 
     deepspeed.checkpointing.configure(
         mpu,
@@ -121,27 +114,22 @@ def _initialize_distributed(neox_args):
 
     device_count = torch.cuda.device_count()
     if torch.distributed.is_initialized():
-
         if neox_args.rank == 0:
             print(
-                "torch distributed is already initialized, "
-                "skipping initialization ...",
+                "torch distributed is already initialized, " "skipping initialization ...",
                 flush=True,
             )
         neox_args.rank = torch.distributed.get_rank()
         neox_args.world_size = torch.distributed.get_world_size()
 
     else:
-
         if neox_args.rank == 0:
             print("> initializing torch distributed ...", flush=True)
         # Manually set the device ids.
         if device_count > 0:
             device = neox_args.rank % device_count
             if neox_args.local_rank is not None:
-                assert (
-                    neox_args.local_rank == device
-                ), "expected local-rank to be the same as rank % device-count."
+                assert neox_args.local_rank == device, "expected local-rank to be the same as rank % device-count."
             else:
                 neox_args.local_rank = device
             torch.cuda.set_device(device)
@@ -156,9 +144,7 @@ def _initialize_distributed(neox_args):
     # Setup 3D topology.
     pp = neox_args.pipe_parallel_size if neox_args.pipe_parallel_size >= 1 else 1
     mp = neox_args.model_parallel_size if neox_args.model_parallel_size >= 1 else 1
-    assert (
-        neox_args.world_size % (pp * mp) == 0
-    ), f"world_size={neox_args.world_size}, pp={pp}, mp={mp}"
+    assert neox_args.world_size % (pp * mp) == 0, f"world_size={neox_args.world_size}, pp={pp}, mp={mp}"
     dp = neox_args.world_size // (pp * mp)
 
     from deepspeed.runtime.pipe.topology import PipeModelDataParallelTopology
@@ -224,10 +210,7 @@ def _set_random_seed(seed):
 
 
 def _write_args_to_tensorboard(neox_args):
-
     """Write arguments to tensorboard."""
     if neox_args.tensorboard_writer:
         for arg_name in vars(neox_args):
-            neox_args.tensorboard_writer.add_text(
-                arg_name, str(getattr(neox_args, arg_name))
-            )
+            neox_args.tensorboard_writer.add_text(arg_name, str(getattr(neox_args, arg_name)))

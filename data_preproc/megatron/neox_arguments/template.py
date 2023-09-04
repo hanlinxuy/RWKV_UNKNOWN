@@ -35,10 +35,7 @@ class NeoXArgsTemplate:
             setattr(self, key, value)
         else:
             error_message = (
-                self.__class__.__name__
-                + ".update_value() to be updated property "
-                + str(key)
-                + " does not exist"
+                self.__class__.__name__ + ".update_value() to be updated property " + str(key) + " does not exist"
             )
             logging.error(error_message)
             raise ValueError(error_message)

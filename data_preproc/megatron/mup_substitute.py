@@ -204,9 +204,7 @@ def get_coord_data(
     elif optimizer is None:
         raise ValueError("optimizer should be sgd|adam|adamw or a custom function")
 
-    data = _get_coord_data(
-        neox_args, timers, lr_scheduler, models, dataloader, optcls, **kwargs
-    )
+    data = _get_coord_data(neox_args, timers, lr_scheduler, models, dataloader, optcls, **kwargs)
     data["optimizer"] = optimizer
     data["lr"] = lr
     return data

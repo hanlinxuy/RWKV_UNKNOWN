@@ -43,9 +43,7 @@ class TinyAttention(nn.Module):
     def forward(self, x, attention_mask):
         q, k, v = torch.chunk(self.proj_qkv(x), 3, dim=-1)
         w = torch.einsum("bnd,bmd->bnm", q, k).unsqueeze(1) * self.scale
-        a = self.softmax(
-            w, mask=attention_mask[..., : w.size(-2), : w.size(-1)]
-        ).squeeze(1)
+        a = self.softmax(w, mask=attention_mask[..., : w.size(-2), : w.size(-1)]).squeeze(1)
         x = torch.einsum("bnm,bmd->bnd", a, v)
         return self.proj_ffn(x)
 
@@ -61,9 +59,7 @@ class SpatialGatingUnit(nn.Module):
         self.proj = nn.Linear(neox_args.seq_length, neox_args.seq_length)
         if self.use_attn:
             assert mask_fn is not None
-            self.attn = TinyAttention(
-                neox_args=neox_args, d_attn=d_attn, d_ff=d_ff, mask_fn=mask_fn
-            )
+            self.attn = TinyAttention(neox_args=neox_args, d_attn=d_attn, d_ff=d_ff, mask_fn=mask_fn)
         nn.init.zeros_(self.proj.weight)
         nn.init.constant_(self.proj.bias, 1.0)
 
@@ -118,9 +114,7 @@ class GMLPBlock(nn.Module):
             d_attn = neox_args.gmlp_attn_dim
         else:
             d_attn = None
-        self.sgu = SpatialGatingUnit(
-            neox_args, ff_dim_parallel, d_attn, causal=True, mask_fn=mask_fn
-        )
+        self.sgu = SpatialGatingUnit(neox_args, ff_dim_parallel, d_attn, causal=True, mask_fn=mask_fn)
         self.output_linear = mpu.RowParallelLinear(
             neox_args=neox_args,
             input_size=ff_dim,

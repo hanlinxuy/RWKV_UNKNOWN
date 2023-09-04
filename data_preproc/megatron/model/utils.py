@@ -40,23 +40,13 @@ def get_params_for_weight_decay_optimization(module, neox_args):
         ) or (
             neox_args.weight_decay == 0.0
         ):  # also include all parameters here if no weight decay is being done
-            no_weight_decay_params["params"].extend(
-                [p for p in list(module_._parameters.values()) if p is not None]
-            )
+            no_weight_decay_params["params"].extend([p for p in list(module_._parameters.values()) if p is not None])
         else:
             weight_decay_params["params"].extend(
-                [
-                    p
-                    for n, p in list(module_._parameters.items())
-                    if p is not None and n != "bias"
-                ]
+                [p for n, p in list(module_._parameters.items()) if p is not None and n != "bias"]
             )
             no_weight_decay_params["params"].extend(
-                [
-                    p
-                    for n, p in list(module_._parameters.items())
-                    if p is not None and n == "bias"
-                ]
+                [p for n, p in list(module_._parameters.items()) if p is not None and n == "bias"]
             )
     if neox_args.weight_decay == 0.0:
         # only return a single param group
@@ -100,9 +90,7 @@ class SequentialWrapper(torch.nn.Module):
 
     def _is_checkpointable(self, funcs):
         if self.parent_class_name == "GPT2ModelPipe":
-            return all(
-                "ParallelTransformerLayerPipe" in f.__class__.__name__ for f in funcs
-            )
+            return all("ParallelTransformerLayerPipe" in f.__class__.__name__ for f in funcs)
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
 
@@ -121,15 +109,8 @@ class SequentialWrapper(torch.nn.Module):
         """
         _set_use_cache(self.sequential, False)
 
-    def forward(
-        self, forward_input, curriculum_seqlen=None, labels=None, neox_args=None
-    ):
-
-        if (
-            curriculum_seqlen is not None
-            and isinstance(forward_input, tuple)
-            and len(forward_input) == 3
-        ):
+    def forward(self, forward_input, curriculum_seqlen=None, labels=None, neox_args=None):
+        if curriculum_seqlen is not None and isinstance(forward_input, tuple) and len(forward_input) == 3:
             neox_args.update_value("curriculum_seqlen", curriculum_seqlen)
             tokens = forward_input[0]
             input_ids = forward_input[1]
@@ -143,9 +124,7 @@ class SequentialWrapper(torch.nn.Module):
                 if labels is not None:
                     labels = labels[:, :curriculum_seqlen].contiguous()
                 # attention_mask has size [1, 1, seqlen, seqlen]
-                attention_mask = attention_mask[
-                    :, :, :curriculum_seqlen, :curriculum_seqlen
-                ].contiguous()
+                attention_mask = attention_mask[:, :, :curriculum_seqlen, :curriculum_seqlen].contiguous()
             forward_input = (tokens, input_ids, attention_mask)
 
         def exec_range_func(start, end):
@@ -170,9 +149,7 @@ class SequentialWrapper(torch.nn.Module):
             num_layers = len(self.sequential)
             x = forward_input
             for start_idx in range(0, num_layers, self.activation_checkpoint_interval):
-                end_idx = min(
-                    start_idx + self.activation_checkpoint_interval, num_layers
-                )
+                end_idx = min(start_idx + self.activation_checkpoint_interval, num_layers)
 
                 funcs = self.sequential[start_idx:end_idx]
                 # Since we either pass tensors or tuples of tensors without unpacking, we
@@ -181,9 +158,7 @@ class SequentialWrapper(torch.nn.Module):
                     x = (x,)
 
                 if self._is_checkpointable(funcs):
-                    x = self.activation_checkpoint_func(
-                        exec_range_func(start_idx, end_idx), *x
-                    )
+                    x = self.activation_checkpoint_func(exec_range_func(start_idx, end_idx), *x)
                 else:
                     x = exec_range_func(start_idx, end_idx)(*x)
         return x
@@ -236,14 +211,10 @@ def configure_sparse_attention(neox_args, attention_type, num_attention_heads, m
         sparsity_config = FixedSparsityConfig(
             num_heads=num_attention_heads,
             block=neox_args.sparsity_config.get("block", 16),
-            different_layout_per_head=neox_args.sparsity_config.get(
-                "different_layout_per_head", False
-            ),
+            different_layout_per_head=neox_args.sparsity_config.get("different_layout_per_head", False),
             num_local_blocks=neox_args.sparsity_config.get("num_local_blocks", 4),
             num_global_blocks=neox_args.sparsity_config.get("num_global_blocks", 1),
-            num_different_global_patterns=neox_args.sparsity_config.get(
-                "num_different_global_patterns", 1
-            ),
+            num_different_global_patterns=neox_args.sparsity_config.get("num_different_global_patterns", 1),
             attention="unidirectional",
             horizontal_global_attention=False,
         )
@@ -251,19 +222,11 @@ def configure_sparse_attention(neox_args, attention_type, num_attention_heads, m
         sparsity_config = VariableSparsityConfig(
             num_heads=num_attention_heads,
             block=neox_args.sparsity_config.get("block", 16),
-            different_layout_per_head=neox_args.sparsity_config.get(
-                "different_layout_per_head", False
-            ),
+            different_layout_per_head=neox_args.sparsity_config.get("different_layout_per_head", False),
             num_random_blocks=neox_args.sparsity_config.get("num_random_blocks", 0),
-            local_window_blocks=neox_args.sparsity_config.get(
-                "local_window_blocks", [4]
-            ),
-            global_block_indices=neox_args.sparsity_config.get(
-                "global_block_indices", [0]
-            ),
-            global_block_end_indices=neox_args.sparsity_config.get(
-                "global_block_end_indices", None
-            ),
+            local_window_blocks=neox_args.sparsity_config.get("local_window_blocks", [4]),
+            global_block_indices=neox_args.sparsity_config.get("global_block_indices", [0]),
+            global_block_end_indices=neox_args.sparsity_config.get("global_block_end_indices", None),
             attention="unidirectional",
             horizontal_global_attention=False,
         )
@@ -283,13 +246,9 @@ def configure_sparse_attention(neox_args, attention_type, num_attention_heads, m
         sparsity_config = BigBirdSparsityConfig(
             num_heads=num_attention_heads,
             block=neox_args.sparsity_config.get("block", 16),
-            different_layout_per_head=neox_args.sparsity_config.get(
-                "different_layout_per_head", False
-            ),
+            different_layout_per_head=neox_args.sparsity_config.get("different_layout_per_head", False),
             num_random_blocks=neox_args.sparsity_config.get("num_random_blocks", 1),
-            num_sliding_window_blocks=neox_args.sparsity_config.get(
-                "num_sliding_window_blocks", 3
-            ),
+            num_sliding_window_blocks=neox_args.sparsity_config.get("num_sliding_window_blocks", 3),
             num_global_blocks=neox_args.sparsity_config.get("num_global_blocks", 1),
             attention="unidirectional",
         )
@@ -297,18 +256,10 @@ def configure_sparse_attention(neox_args, attention_type, num_attention_heads, m
         sparsity_config = BSLongformerSparsityConfig(
             num_heads=num_attention_heads,
             block=neox_args.sparsity_config.get("block", 16),
-            different_layout_per_head=neox_args.sparsity_config.get(
-                "different_layout_per_head", False
-            ),
-            num_sliding_window_blocks=neox_args.sparsity_config.get(
-                "num_sliding_window_blocks", 3
-            ),
-            global_block_indices=neox_args.sparsity_config.get(
-                "global_block_indices", [0]
-            ),
-            global_block_end_indices=neox_args.sparsity_config.get(
-                "global_block_end_indices", None
-            ),
+            different_layout_per_head=neox_args.sparsity_config.get("different_layout_per_head", False),
+            num_sliding_window_blocks=neox_args.sparsity_config.get("num_sliding_window_blocks", 3),
+            global_block_indices=neox_args.sparsity_config.get("global_block_indices", [0]),
+            global_block_end_indices=neox_args.sparsity_config.get("global_block_end_indices", None),
             attention="unidirectional",
         )
     else:

@@ -260,9 +260,7 @@ def stream_tokens(
 
     # set variables
     eos_token_id = eos_token_id or neox_args.tokenizer.eod
-    maximum_tokens = maximum_tokens or (
-        neox_args.seq_length - token_generation_start_index.max().item() - 1
-    )
+    maximum_tokens = maximum_tokens or (neox_args.seq_length - token_generation_start_index.max().item() - 1)
     batch_size = context_tokens.size(0)
 
     # get the context_index at which generation is to start
@@ -270,8 +268,7 @@ def stream_tokens(
     token_index_to_generate = token_generation_start_index.min().item()
     first_token_index_to_generate = token_index_to_generate
     last_token_index_to_generate = min(
-        neox_args.seq_length
-        - 1,  # never generate more than the model's sequence length
+        neox_args.seq_length - 1,  # never generate more than the model's sequence length
         token_index_to_generate + maximum_tokens - 1,
     )
 
@@ -279,9 +276,7 @@ def stream_tokens(
         # initialize generation variables
         state_is_done = torch.zeros([batch_size]).byte().cuda()
         token_generation_end_index = torch.ones([batch_size]).long().cuda() * (-1)
-        generation_logits = (
-            torch.empty(maximum_tokens, neox_args.padded_vocab_size).float().cuda()
-        )
+        generation_logits = torch.empty(maximum_tokens, neox_args.padded_vocab_size).float().cuda()
 
         while token_index_to_generate <= last_token_index_to_generate:
             if recompute:  # recompute all tokens
@@ -300,12 +295,8 @@ def stream_tokens(
                     tokens_to_use = context_tokens[:, :token_index_to_generate]
                     positions_to_use = position_ids[:, :token_index_to_generate]
                 else:
-                    tokens_to_use = context_tokens[:, token_index_to_generate - 1].view(
-                        batch_size, -1
-                    )
-                    positions_to_use = position_ids[
-                        :, token_index_to_generate - 1
-                    ].view(batch_size, -1)
+                    tokens_to_use = context_tokens[:, token_index_to_generate - 1].view(batch_size, -1)
+                    positions_to_use = position_ids[:, token_index_to_generate - 1].view(batch_size, -1)
 
                 model_inputs = (
                     tokens_to_use,  # input_ids
@@ -322,33 +313,23 @@ def stream_tokens(
             if logits is not None:
                 # sample token id of the to be generated token
                 if temperature == 0.0 and top_k == 0 and top_p == 0.0:
-                    generated_tokens = torch.argmax(
-                        generated_token_logits, dim=-1
-                    ).view(-1)
+                    generated_tokens = torch.argmax(generated_token_logits, dim=-1).view(-1)
                 else:
                     generated_token_logits = generated_token_logits.float()
                     if temperature > 0.0:
                         generated_token_logits /= temperature
-                    generated_token_logits = filter_logits(
-                        generated_token_logits, top_k=top_k, top_p=top_p
-                    )
+                    generated_token_logits = filter_logits(generated_token_logits, top_k=top_k, top_p=top_p)
                     next_token_log_probs = F.softmax(generated_token_logits, dim=-1)
-                    generated_tokens = torch.multinomial(
-                        next_token_log_probs, num_samples=1
-                    ).view(-1)
+                    generated_tokens = torch.multinomial(next_token_log_probs, num_samples=1).view(-1)
 
                 if neox_args.return_logits:
-                    generation_logits[
-                        token_index_to_generate - 1
-                    ] = generated_token_logits[0]
+                    generation_logits[token_index_to_generate - 1] = generated_token_logits[0]
 
             if neox_args.is_pipe_parallel:
                 # broadcast generated tokens to pipe parallel group
                 src_rank = model.grid.stage_to_global(model.num_stages - 1)
                 generated_tokens = (
-                    generated_tokens
-                    if logits is not None
-                    else torch.zeros(batch_size, dtype=torch.long).cuda()
+                    generated_tokens if logits is not None else torch.zeros(batch_size, dtype=torch.long).cuda()
                 )
                 torch.distributed.broadcast(
                     tensor=generated_tokens,
@@ -381,9 +362,7 @@ def stream_tokens(
                 )
             state_is_done = state_is_done | stop_tokens_produced
 
-            token_generation_end_index[
-                (state_started.byte() & ~state_is_done).bool()
-            ] = token_index_to_generate
+            token_generation_end_index[(state_started.byte() & ~state_is_done).bool()] = token_index_to_generate
 
             token_index_to_generate += 1
 
@@ -433,9 +412,7 @@ def generate_samples_from_prompt(
     eos_token_id = eos_token_id or neox_args.tokenizer.eod
 
     # type check
-    assert any(
-        [isinstance(text, str), isinstance(text, list)]
-    ), "Text should be in string or list form"
+    assert any([isinstance(text, str), isinstance(text, list)]), "Text should be in string or list form"
     if isinstance(text, str):
         text = [text]
 
@@ -466,8 +443,7 @@ def generate_samples_from_prompt(
                 print_rank_0(
                     "\nWarning! Context length",
                     context_length,
-                    "\nPlease give smaller context (e.g. half of the "
-                    "max sequence length)!",
+                    "\nPlease give smaller context (e.g. half of the " "max sequence length)!",
                 )
         if not is_mp_rank_0():
             context_tokens = neox_args.tokenizer.tokenize("EMPTY TEXT")
@@ -499,12 +475,8 @@ def generate_samples_from_prompt(
             pass  # finish generation and use all results below
 
         batch_context_tokens = batch_context_tokens.cpu().numpy().tolist()
-        batch_token_generation_start_index = (
-            batch_token_generation_start_index.cpu().numpy().tolist()
-        )
-        batch_token_generation_end_index = (
-            batch_token_generation_end_index.cpu().numpy().tolist()
-        )
+        batch_token_generation_start_index = batch_token_generation_start_index.cpu().numpy().tolist()
+        batch_token_generation_end_index = batch_token_generation_end_index.cpu().numpy().tolist()
         batch_is_done = is_done.cpu().numpy().tolist()
 
         for tokens, start_index, end_index, is_done in zip(
@@ -513,7 +485,6 @@ def generate_samples_from_prompt(
             batch_token_generation_end_index,
             batch_is_done,
         ):
-
             if end_index >= start_index:
                 generated_tokens = tokens[start_index : end_index + 1]
                 try:
@@ -591,26 +562,18 @@ def generate_samples_input_from_file(
         - 'duration_seconds': duration of the generation in seconds
     """
     # Read the sample file
-    print_rank_0(
-        "generate_samples_input_from_file() loading input from {}".format(input_file)
-    )
+    print_rank_0("generate_samples_input_from_file() loading input from {}".format(input_file))
     with open(input_file, "r", encoding="utf-8") as f:
         prompts = f.read()
         prompts = prompts.split(prompt_end)
     prompts = [p.strip() for p in prompts]
     prompts = [p for p in prompts if len(p) > 0]
-    print_rank_0(
-        "generate_samples_input_from_file() prompts loaded: {}".format(len(prompts))
-    )
+    print_rank_0("generate_samples_input_from_file() prompts loaded: {}".format(len(prompts)))
 
     if is_mp_rank_0():
         if output_file is None:
             output_file = str(input_file) + ".output.jsonl"
-            print_rank_0(
-                "generate_samples_input_from_file() setting default output file to {}".format(
-                    output_file
-                )
-            )
+            print_rank_0("generate_samples_input_from_file() setting default output file to {}".format(output_file))
 
     print_rank_0("generate_samples_input_from_file() generating...")
     generated_texts = generate_samples_from_prompt(
@@ -754,19 +717,13 @@ def generate_samples_interactive(
                 if prompt_end in current_input:
                     raw_text += current_input.split(prompt_end)[0]
                     break
-                raw_text += (
-                    current_input + "\n"
-                )  # re-add newline since we stripped it on input
+                raw_text += current_input + "\n"  # re-add newline since we stripped it on input
             context_tokens = neox_args.tokenizer.tokenize(raw_text)
             if len(context_tokens) == 0:
                 context_tokens = [neox_args.tokenizer.eod]
             context_length = len(context_tokens)
             if context_length >= (neox_args.seq_length - 1):
-                print_rank_0(
-                    "\nContext length"
-                    + str(context_length)
-                    + "\nReached max sequence length!"
-                )
+                print_rank_0("\nContext length" + str(context_length) + "\nReached max sequence length!")
                 terminate_runs = 1
         else:
             context_tokens = neox_args.tokenizer.tokenize("EMPTY TEXT")
@@ -798,10 +755,7 @@ def generate_samples_interactive(
                     .cpu()
                     .numpy()
                     .tolist()[
-                        batch_token_generation_start_index[0]
-                        .item() : batch_token_generation_end_index[0]
-                        .item()
-                        + 1
+                        batch_token_generation_start_index[0].item() : batch_token_generation_end_index[0].item() + 1
                     ]
                 )
                 generated_text = neox_args.tokenizer.detokenize(generated_tokens)

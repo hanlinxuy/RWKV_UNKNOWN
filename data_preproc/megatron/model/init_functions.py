@@ -37,9 +37,7 @@ def init_method_normal(sigma, use_mup_outer=False, mup_init_scale=1.0):
     return init_
 
 
-def scaled_init_method_normal(
-    sigma, num_layers, use_mup_outer=False, mup_init_scale=1.0
-):
+def scaled_init_method_normal(sigma, num_layers, use_mup_outer=False, mup_init_scale=1.0):
     """Init method based on N(0, sigma/sqrt(2*num_layers)."""
     std = sigma / math.sqrt(2.0 * num_layers)
 
@@ -57,7 +55,6 @@ def scaled_init_method_normal(
 
 # orthogonal init does not support fp16, so have to patch it
 def _orthogonal(tensor, gain=1):
-
     if tensor.ndimension() < 2:
         raise ValueError("Only tensors with 2 or more dimensions are supported")
 
@@ -168,7 +165,6 @@ def wang_init_method(n_layers, dim, use_mup_outer=False, mup_init_scale=1.0):
 
 
 def get_init_methods(args):
-
     if args.use_mup:
         try:
             import mup
@@ -178,31 +174,21 @@ def get_init_methods(args):
 
     def _get(name):
         if name == "normal":
-            return init_method_normal(
-                args.init_method_std, args.use_mup, args.mup_init_scale
-            )
+            return init_method_normal(args.init_method_std, args.use_mup, args.mup_init_scale)
         elif name == "scaled_normal":
-            return scaled_init_method_normal(
-                args.init_method_std, args.num_layers, args.use_mup, args.mup_init_scale
-            )
+            return scaled_init_method_normal(args.init_method_std, args.num_layers, args.use_mup, args.mup_init_scale)
         elif name == "orthogonal":
             return orthogonal_init_method(args.use_mup, args.mup_init_scale)
         elif name == "scaled_orthogonal":
-            return orthogonal_init_method(
-                args.num_layers, args.use_mup, args.mup_init_scale
-            )
+            return orthogonal_init_method(args.num_layers, args.use_mup, args.mup_init_scale)
         elif name == "xavier_uniform":
             return xavier_uniform_init_method(args.use_mup, args.mup_init_scale)
         elif name == "xavier_normal":
             return xavier_normal_init_method(args.use_mup, args.mup_init_scale)
         elif name == "wang_init":
-            return wang_init_method(
-                args.num_layers, args.hidden_size, args.use_mup, args.mup_init_scale
-            )
+            return wang_init_method(args.num_layers, args.hidden_size, args.use_mup, args.mup_init_scale)
         elif name == "small_init":
-            return small_init_init_method(
-                args.hidden_size, args.use_mup, args.mup_init_scale
-            )
+            return small_init_init_method(args.hidden_size, args.use_mup, args.mup_init_scale)
         else:
             raise NotImplementedError(f"Unknown init method {name}")
 

@@ -83,9 +83,7 @@ class GradientNoiseScale:
 
     def flatten_grads(self):
         grads = []
-        assert hasattr(
-            self.model, "stored_gradients"
-        ), "You might need to update DeeperSpeed"
+        assert hasattr(self.model, "stored_gradients"), "You might need to update DeeperSpeed"
         if self.model.stored_gradients is not None:
             for g in self.model.stored_gradients:
                 if g is not None and not g.isnan().any() and not g.isinf().any():
@@ -115,7 +113,6 @@ class GradientNoiseScale:
         return overflow
 
     def _update(self):
-
         grad = self.flatten_grads()
         is_overflow = self._sync_overflow(grad is None)
         if is_overflow:
@@ -133,7 +130,6 @@ class GradientNoiseScale:
             # calculate Gbig and Gsmall
             # this needs to be done in fp32 or it overflows
             if self.neox_args.is_pipe_parallel:
-
                 g_big = torch.square(torch.norm(grads.to(torch.float)))
                 g_small = torch.square(torch.norm(grad.to(torch.float)))
 
@@ -161,12 +157,7 @@ class GradientNoiseScale:
                 g_small = torch.square(torch.norm(grad.to(torch.float)))
 
             # communicate any overflows
-            is_overflow = (
-                g_small.isinf().any()
-                or g_small.isnan().any()
-                or g_big.isinf().any()
-                or g_big.isnan().any()
-            )
+            is_overflow = g_small.isinf().any() or g_small.isnan().any() or g_big.isinf().any() or g_big.isnan().any()
             is_overflow = self._sync_overflow(is_overflow)
             if is_overflow:
                 return
@@ -177,19 +168,11 @@ class GradientNoiseScale:
                 / (self.batch_size_large - self.batch_size_small)
                 * (self.batch_size_large * g_big - self.batch_size_small * g_small)
             )
-            scale = (
-                1
-                / (1 / self.batch_size_small - 1 / self.batch_size_large)
-                * (g_small - g_big)
-            )
+            scale = 1 / (1 / self.batch_size_small - 1 / self.batch_size_large) * (g_small - g_big)
 
             # calculate running average
-            self.ema_noise, noise = ema(
-                self.ema_noise, self.beta, noise, self.n_updates
-            )
-            self.ema_scale, scale = ema(
-                self.ema_scale, self.beta, scale, self.n_updates
-            )
+            self.ema_noise, noise = ema(self.ema_noise, self.beta, noise, self.n_updates)
+            self.ema_scale, scale = ema(self.ema_scale, self.beta, scale, self.n_updates)
 
             # calculate noise scale
             scale = scale.item()

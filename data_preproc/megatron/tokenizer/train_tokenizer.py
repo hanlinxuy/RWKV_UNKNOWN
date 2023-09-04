@@ -46,9 +46,7 @@ def json_iterator(input_dir, text_key="text"):
             yield doc[text_key]
 
 
-def train_tokenizer(
-    input_dir: str, save_path: str, tokenizer_type: str = "BPE", vocab_size: int = 52000
-):
+def train_tokenizer(input_dir: str, save_path: str, tokenizer_type: str = "BPE", vocab_size: int = 52000):
     """
     Trains a tokenizer on all the json files in `input_dir` and saves it to `save_path`
 
@@ -72,9 +70,7 @@ def train_tokenizer(
     tokenizer.normalizer = NFKC()
 
     # And then train
-    trainer = trainers.BpeTrainer(
-        vocab_size=vocab_size, special_tokens=["<|endoftext|>", "<|padding|>"]
-    )
+    trainer = trainers.BpeTrainer(vocab_size=vocab_size, special_tokens=["<|endoftext|>", "<|padding|>"])
     tokenizer.train_from_iterator(json_iterator(input_dir), trainer)
 
     # And Save it
@@ -115,7 +111,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
     args = parse_args()
 
     train_tokenizer(

@@ -95,13 +95,9 @@ class SM3(Optimizer):
                         return constructor(grad_indices, values, grad.size())
 
                     acc = state[_key(0)]
-                    update_values = _compute_sparse_update(
-                        beta, acc, grad_values, grad_indices
-                    )
+                    update_values = _compute_sparse_update(beta, acc, grad_values, grad_indices)
 
-                    self._update_sparse_accumulator(
-                        beta, acc, make_sparse(update_values)
-                    )
+                    self._update_sparse_accumulator(beta, acc, make_sparse(update_values))
 
                     # Add small amount for numerical stability
                     update_values.add_(eps).rsqrt_().mul_(grad_values)
@@ -337,9 +333,7 @@ class madgrad_wd(torch.optim.Optimizer):
                         state["x0"] = torch.clone(p.data).detach()
 
                 if momentum != 0.0 and grad.is_sparse:
-                    raise RuntimeError(
-                        "momentum != 0 is not compatible with sparse gradients"
-                    )
+                    raise RuntimeError("momentum != 0 is not compatible with sparse gradients")
 
                 grad_sum_sq = state["grad_sum_sq"]
                 s = state["s"]
@@ -366,9 +360,7 @@ class madgrad_wd(torch.optim.Optimizer):
 
                     # Compute x_0 from other known quantities
                     rms_masked_vals = grad_sum_sq_masked._values().pow(1 / 3).add_(eps)
-                    x0_masked_vals = p_masked._values().addcdiv(
-                        s_masked._values(), rms_masked_vals, value=1
-                    )
+                    x0_masked_vals = p_masked._values().addcdiv(s_masked._values(), rms_masked_vals, value=1)
 
                     # Dense + sparse op
                     grad_sq = grad * grad
@@ -381,9 +373,7 @@ class madgrad_wd(torch.optim.Optimizer):
                     s_masked._values().add_(grad_val, alpha=lamb)
 
                     # update masked copy of p
-                    p_kp1_masked_vals = x0_masked_vals.addcdiv(
-                        s_masked._values(), rms_masked_vals, value=-1
-                    )
+                    p_kp1_masked_vals = x0_masked_vals.addcdiv(s_masked._values(), rms_masked_vals, value=-1)
                     # Copy updated masked p to dense p using an add operation
                     p_masked._values().add_(p_kp1_masked_vals, alpha=-1)
                     p.data.add_(p_masked, alpha=-1)

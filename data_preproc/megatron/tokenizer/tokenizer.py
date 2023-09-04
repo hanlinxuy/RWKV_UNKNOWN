@@ -50,9 +50,7 @@ def build_tokenizer(args):
         tokenizer = RWKVTokenizer(args.vocab_file)
     elif args.tokenizer_type.lower() == "HFGPT2Tokenizer".lower():
         if args.vocab_file is None:
-            print(
-                "WARNING: No vocab file found, loading Huggingface's pretrained GPT2Tokenizer"
-            )
+            print("WARNING: No vocab file found, loading Huggingface's pretrained GPT2Tokenizer")
         tokenizer = HFGPT2Tokenizer(args.vocab_file)
     elif args.tokenizer_type.lower() == "CharLevelTokenizer".lower():
         tokenizer = CharLevelTokenizer(vocab_size=512)
@@ -60,9 +58,7 @@ def build_tokenizer(args):
         assert args.vocab_file is not None
         tokenizer = TiktokenTokenizer(args.vocab_file)
     else:
-        raise NotImplementedError(
-            "{} tokenizer is not " "implemented.".format(args.tokenizer_type)
-        )
+        raise NotImplementedError("{} tokenizer is not " "implemented.".format(args.tokenizer_type))
 
     # Add vocab size.
     args.padded_vocab_size = _vocab_size_with_padding(tokenizer.vocab_size, args)
@@ -116,39 +112,27 @@ class AbstractTokenizer(ABC):
         pass
 
     def detokenize(self, token_ids):
-        raise NotImplementedError(
-            "detokenizer is not implemented for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("detokenizer is not implemented for {} " "tokenizer".format(self.name))
 
     @property
     def cls(self):
-        raise NotImplementedError(
-            "CLS is not provided for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("CLS is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def sep(self):
-        raise NotImplementedError(
-            "SEP is not provided for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("SEP is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def pad(self):
-        raise NotImplementedError(
-            "PAD is not provided for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("PAD is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def eod(self):
-        raise NotImplementedError(
-            "EOD is not provided for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("EOD is not provided for {} " "tokenizer".format(self.name))
 
     @property
     def mask(self):
-        raise NotImplementedError(
-            "MASK is not provided for {} " "tokenizer".format(self.name)
-        )
+        raise NotImplementedError("MASK is not provided for {} " "tokenizer".format(self.name))
 
 
 class _GPT2BPETokenizer(AbstractTokenizer):
@@ -158,9 +142,7 @@ class _GPT2BPETokenizer(AbstractTokenizer):
         name = "GPT2 BPE"
         super().__init__(name)
 
-        self.tokenizer = GPT2Tokenizer(
-            vocab_file, merge_file, errors="replace", special_tokens=[], max_len=None
-        )
+        self.tokenizer = GPT2Tokenizer(vocab_file, merge_file, errors="replace", special_tokens=[], max_len=None)
         self.eod_id = self.tokenizer.encoder["<|endoftext|>"]
 
     @property
@@ -202,17 +184,11 @@ class SentencePieceTokenizer(AbstractTokenizer):
 
     @property
     def vocab(self):
-        return {
-            self.tokenizer.id_to_piece(idx): idx
-            for idx in range(self.tokenizer.get_piece_size())
-        }
+        return {self.tokenizer.id_to_piece(idx): idx for idx in range(self.tokenizer.get_piece_size())}
 
     @property
     def inv_vocab(self):
-        return {
-            idx: self.tokenizer.id_to_piece(idx)
-            for idx in range(self.tokenizer.get_piece_size())
-        }
+        return {idx: self.tokenizer.id_to_piece(idx) for idx in range(self.tokenizer.get_piece_size())}
 
     def tokenize(self, text):
         return self.tokenizer.encode(text)
@@ -232,9 +208,9 @@ class HFTokenizer(AbstractTokenizer):
         name = "HFTokenizer"
         super().__init__(name)
 
-        self.tokenizer = Tokenizer.from_file(vocab_file)   
+        self.tokenizer = Tokenizer.from_file(vocab_file)
         self.eod_id = self.tokenizer.token_to_id("<|endoftext|>")
-        self.pad_id = self.tokenizer.token_to_id("<|padding|>") 
+        self.pad_id = self.tokenizer.token_to_id("<|padding|>")
 
     @property
     def vocab_size(self):
@@ -261,10 +237,11 @@ class HFTokenizer(AbstractTokenizer):
     def eod(self):
         return self.eod_id
 
+
 class RWKVTokenizer(AbstractTokenizer):
     """RWKV Worlds Tokenizer."""
 
-    def __init__(self, vocab_file='rwkv_vocab_v20230424.txt'):
+    def __init__(self, vocab_file="rwkv_vocab_v20230424.txt"):
         name = "RWKVTokenizer"
         super().__init__(name)
 
@@ -296,6 +273,7 @@ class RWKVTokenizer(AbstractTokenizer):
     @property
     def eod(self):
         return self.eod_id
+
 
 class HFGPT2Tokenizer(AbstractTokenizer):
     """Designed to Integrate the pretrained OpenAI GPT2 Tokenizers from HF"""
@@ -412,9 +390,7 @@ class TiktokenTokenizer(AbstractTokenizer):
 
     @property
     def vocab(self):
-        raise NotImplementedError(
-            "TiktokenTokenizer does not implement vocabulary access."
-        )
+        raise NotImplementedError("TiktokenTokenizer does not implement vocabulary access.")
 
     @property
     def inv_vocab(self):
@@ -439,5 +415,3 @@ class TiktokenTokenizer(AbstractTokenizer):
     @property
     def pad(self):
         raise NotImplementedError
-
-        

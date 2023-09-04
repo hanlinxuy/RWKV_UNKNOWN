@@ -25,9 +25,7 @@ import sys
 import lm_dataformat as lmd
 import numpy as np
 
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
-)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 import time
 import tqdm
 import torch
@@ -94,13 +92,11 @@ def get_args():
             "GPT2BPETokenizer",
             "CharLevelTokenizer",
             "TiktokenTokenizer",
-            "RWKVTokenizer"
+            "RWKVTokenizer",
         ],
         help="What type of tokenizer to use.",
     )
-    group.add_argument(
-        "--vocab-file", type=str, default=None, help="Path to the vocab file"
-    )
+    group.add_argument("--vocab-file", type=str, default=None, help="Path to the vocab file")
     group.add_argument(
         "--merge-file",
         type=str,
@@ -129,9 +125,7 @@ def get_args():
     )
 
     group = parser.add_argument_group(title="runtime")
-    group.add_argument(
-        "--workers", type=int, default=1, help="Number of worker processes to launch"
-    )
+    group.add_argument("--workers", type=int, default=1, help="Number of worker processes to launch")
     group.add_argument(
         "--log-interval",
         type=int,
@@ -195,12 +189,8 @@ def main():
     output_idx_files = {}
     builders = {}
     for key in args.jsonl_keys:
-        output_bin_files[key] = "{}_{}_{}.bin".format(
-            args.output_prefix, key, "document"
-        )
-        output_idx_files[key] = "{}_{}_{}.idx".format(
-            args.output_prefix, key, "document"
-        )
+        output_bin_files[key] = "{}_{}_{}.bin".format(args.output_prefix, key, "document")
+        output_idx_files[key] = "{}_{}_{}.idx".format(args.output_prefix, key, "document")
         builders[key] = indexed_dataset.make_builder(
             output_bin_files[key],
             impl=args.dataset_impl,

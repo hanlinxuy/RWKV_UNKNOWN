@@ -6,6 +6,7 @@ from .dataloader import dataloader
 import random
 import copy
 
+
 class MyDataset(Dataset):
     def __init__(self, args):
         self.args = args
@@ -14,11 +15,11 @@ class MyDataset(Dataset):
         self.pool = self.limit_sample(args.epoch_steps)
         self.data_size = len(self.data)
         self.item = []
- 
+
     def __len__(self):
         return self.args.epoch_steps * self.args.micro_bsz
 
-    def limit_sample(self,n):
+    def limit_sample(self, n):
         if len(self.data) <= n:
             res = random.sample(self.data, len(self.data))
         else:
@@ -35,8 +36,8 @@ class MyDataset(Dataset):
                 self.pool = self.limit_sample(args.epoch_steps)
             self.item = self.pool[0]
             self.pool = self.pool[1:]
-        step  = self.item[:req_len]
-        step_len =  len(step)
+        step = self.item[:req_len]
+        step_len = len(step)
         # 滑窗机制
         if len(self.item) > req_len:
             half = int(ctx_len / 2)
@@ -46,10 +47,10 @@ class MyDataset(Dataset):
         dix = [0 for x in range(req_len)]
         dix[:step_len] = step
         # 生成mask
-        mask = [int(x!=0) for x in dix]
+        mask = [int(x != 0) for x in dix]
         mask = mask[:-1]
         # 输入构建
-        x = torch.tensor([dix[:-1]], dtype=torch.long).to('cuda')
-        y = torch.tensor([dix[1:]], dtype=torch.long).to('cuda')
-        z = torch.tensor([mask], dtype=torch.float32).to('cuda')
+        x = torch.tensor([dix[:-1]], dtype=torch.long).to("cuda")
+        y = torch.tensor([dix[1:]], dtype=torch.long).to("cuda")
+        z = torch.tensor([mask], dtype=torch.float32).to("cuda")
         return x, y, z

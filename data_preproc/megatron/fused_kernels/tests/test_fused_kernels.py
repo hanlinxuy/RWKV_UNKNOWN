@@ -23,8 +23,7 @@ def test_fused_softmax():
     bert = BertModel.from_pretrained("bert-base-cased").cuda().half()
     tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
     test_text = (
-        "Hello. How are you? I am fine thank you and you? yes Good. "
-        "hi hi hi hi hi hi hi hi hi hi hi hi hi"  # 32
+        "Hello. How are you? I am fine thank you and you? yes Good. " "hi hi hi hi hi hi hi hi hi hi hi hi hi"  # 32
     )
 
     tokens = tokenizer(
@@ -120,10 +119,7 @@ def test_fused_softmax():
 def test_fused_upper_triangle_mask_softmax():
     gpt = GPT2Model.from_pretrained("gpt2").cuda().half()
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    test_text = (
-        "Hello. How are you? I am fine thank you and you? yes Good. "
-        "hi hi hi hi hi hi hi"  # 24
-    )
+    test_text = "Hello. How are you? I am fine thank you and you? yes Good. " "hi hi hi hi hi hi hi"  # 24
 
     tokens = tokenizer(
         [test_text] * 4,
@@ -221,8 +217,7 @@ def test_layer_norm():
     bert = BertModel.from_pretrained("bert-base-cased").cuda().half()
     tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
     test_text = (
-        "Hello. How are you? I am fine thank you and you? yes Good. "
-        "hi hi hi hi hi hi hi hi hi hi hi hi hi"  # 32
+        "Hello. How are you? I am fine thank you and you? yes Good. " "hi hi hi hi hi hi hi hi hi hi hi hi hi"  # 32
     )
 
     tokens = tokenizer(
@@ -243,13 +238,9 @@ def test_layer_norm():
         .half()
     )
 
-    fused_layernorm_layer = (
-        MixedFusedLayerNorm(normalized_shape=embedding_output.size(-1)).cuda().half()
-    )
+    fused_layernorm_layer = MixedFusedLayerNorm(normalized_shape=embedding_output.size(-1)).cuda().half()
 
-    torch_layernorm_layer = (
-        LayerNorm(normalized_shape=embedding_output.size(-1)).cuda().half()
-    )
+    torch_layernorm_layer = LayerNorm(normalized_shape=embedding_output.size(-1)).cuda().half()
 
     fused_output = fused_layernorm_layer(embedding_output)
     torch_output = torch_layernorm_layer(embedding_output)

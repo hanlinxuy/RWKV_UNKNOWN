@@ -69,9 +69,7 @@ class Embedding(torch.nn.Module):
 
                 self.embedding_module = bnb.nn.StableEmbedding
             except ModuleNotFoundError:
-                print(
-                    "Please install bitsandbytes following https://github.com/facebookresearch/bitsandbytes."
-                )
+                print("Please install bitsandbytes following https://github.com/facebookresearch/bitsandbytes.")
                 raise Exception
         else:
             self.embedding_module = torch.nn.Embedding
@@ -81,16 +79,12 @@ class Embedding(torch.nn.Module):
         if self.use_pos_emb:
             self.embedding_type = neox_args.pos_emb
             if self.embedding_type == "learned":
-                self.position_embeddings = self.embedding_module(
-                    max_sequence_length, self.hidden_size
-                )
+                self.position_embeddings = self.embedding_module(max_sequence_length, self.hidden_size)
                 self._position_embeddings_key = "position_embeddings"
                 # Initialize the position embeddings.
                 self.init_method(self.position_embeddings.weight)
             elif self.embedding_type == "sinusoidal":
-                self.position_embeddings = SinusoidalPositionalEmbedding(
-                    self.hidden_size
-                )
+                self.position_embeddings = SinusoidalPositionalEmbedding(self.hidden_size)
 
         # Token type embedding.
         # Add this as an optional field that can be added through
@@ -98,9 +92,7 @@ class Embedding(torch.nn.Module):
         # token types and add them as needed.
         self._tokentype_embeddings_key = "tokentype_embeddings"
         if self.num_tokentypes > 0:
-            self.tokentype_embeddings = self.embedding_module(
-                self.num_tokentypes, self.hidden_size
-            )
+            self.tokentype_embeddings = self.embedding_module(self.num_tokentypes, self.hidden_size)
             # Initialize the token-type embeddings.
             self.init_method(self.tokentype_embeddings.weight)
         else:
@@ -121,13 +113,9 @@ class Embedding(torch.nn.Module):
         if self.tokentype_embeddings is not None:
             raise Exception("tokentype embeddings is already initialized")
         if torch.distributed.get_rank() == 0:
-            print(
-                "adding embedding for {} tokentypes".format(num_tokentypes), flush=True
-            )
+            print("adding embedding for {} tokentypes".format(num_tokentypes), flush=True)
         self.num_tokentypes = num_tokentypes
-        self.tokentype_embeddings = self.embedding_module(
-            num_tokentypes, self.hidden_size
-        )
+        self.tokentype_embeddings = self.embedding_module(num_tokentypes, self.hidden_size)
         # Initialize the token-type embeddings.
         self.init_method(self.tokentype_embeddings.weight)
 
@@ -171,9 +159,7 @@ class EmbeddingPipe(Embedding):
         return self.word_embeddings.weight
 
     def forward(self, args):
-        assert (
-            len(args) == 3
-        ), f"Expected 3 arguments (input_ids, position_ids, attention_mask), but got {len(args)}."
+        assert len(args) == 3, f"Expected 3 arguments (input_ids, position_ids, attention_mask), but got {len(args)}."
 
         input_ids = args[0]
         position_ids = args[1]
@@ -196,15 +182,13 @@ class SoftEmbedding(torch.nn.Module):
         self.neox_args = neox_args
         self.init_range = init_range
         self.init_string = init_string
-        self.soft_embedding_weight = torch.nn.parameter.Parameter(
-            self.initialize_embedding(wte)
-        )
+        self.soft_embedding_weight = torch.nn.parameter.Parameter(self.initialize_embedding(wte))
 
     def initialize_embedding(self):
         if self.init_string:
-            embeds = torch.LongTensor(
-                self.neox_args.tokenizer.tokenize(self.init_string)
-            ).to(self.embedding_module.weight.device)
+            embeds = torch.LongTensor(self.neox_args.tokenizer.tokenize(self.init_string)).to(
+                self.embedding_module.weight.device
+            )
             embeds = self.embedding_module(embeds)
             if embeds.shape[0] >= self.n_tokens:
                 embeds = embeds[: self.n_tokens, :]  # slice
@@ -213,9 +197,7 @@ class SoftEmbedding(torch.nn.Module):
                     : self.n_tokens, :
                 ]  # pad up to n_tokens
             return embeds
-        return torch.Tensor(n_tokens, neox_args.hidden_size).uniform_(
-            -self.random_range, self.random_range
-        )
+        return torch.Tensor(n_tokens, neox_args.hidden_size).uniform_(-self.random_range, self.random_range)
 
     def forward(self, args: tuple):
         in_inference = len(args) == 3  # embeddings, layer_past, attention_mask
@@ -224,9 +206,7 @@ class SoftEmbedding(torch.nn.Module):
             embedding, attention_mask = args
         else:
             embedding, layer_past, attention_mask = args
-        soft_embedding = self.soft_embedding_weight.repeat(
-            embedding.shape[0], 1, 1
-        )  # repeat batch_size times
+        soft_embedding = self.soft_embedding_weight.repeat(embedding.shape[0], 1, 1)  # repeat batch_size times
         if in_train:
             # append soft embedding at the beginning in training
             embedding = torch.cat((soft_embedding, embedding), dim=1)

@@ -50,7 +50,6 @@ def check_checkpoint_args(neox_args, checkpoint_args):
 
 
 def do_forward_pass(neox_args, model, inference=False):
-
     # set to eval mode
     model_was_in_train = model.training
     model.eval()
@@ -58,16 +57,12 @@ def do_forward_pass(neox_args, model, inference=False):
     # get context tokens
     # always forward full batch size
     context_tokens_tensor = (
-        torch.arange(neox_args.seq_length + 1)
-        .repeat((neox_args.train_micro_batch_size_per_gpu, 1))
-        .cuda()
+        torch.arange(neox_args.seq_length + 1).repeat((neox_args.train_micro_batch_size_per_gpu, 1)).cuda()
     )
 
     # forward
     if inference:
-        tokens, attention_mask, position_ids = get_batch(
-            neox_args, context_tokens_tensor[:, : neox_args.seq_length]
-        )
+        tokens, attention_mask, position_ids = get_batch(neox_args, context_tokens_tensor[:, : neox_args.seq_length])
         model_inputs = (
             tokens,
             position_ids,
@@ -79,9 +74,7 @@ def do_forward_pass(neox_args, model, inference=False):
         data_iterator = iter([{"text": context_tokens_tensor}])
         _, logits = model.eval_batch(data_iter=data_iterator, return_logits=True)
     else:
-        tokens, attention_mask, position_ids = get_batch(
-            neox_args, context_tokens_tensor[:, : neox_args.seq_length]
-        )
+        tokens, attention_mask, position_ids = get_batch(neox_args, context_tokens_tensor[:, : neox_args.seq_length])
         logits = model((tokens, position_ids, attention_mask))
 
     # reset to train mode, if model was in training before
@@ -89,9 +82,7 @@ def do_forward_pass(neox_args, model, inference=False):
         model.train()
 
     if logits is not None:
-        logits = logits.detach().cpu()[
-            0
-        ]  # just return first batch item (they are all equal)
+        logits = logits.detach().cpu()[0]  # just return first batch item (they are all equal)
 
     return logits
 
@@ -101,9 +92,7 @@ def check_forward_pass(neox_args, model, checkpoint_logits, inference):
     logits = do_forward_pass(neox_args=neox_args, model=model, inference=inference)
 
     # check
-    if (
-        logits is not None and checkpoint_logits is not None
-    ):  # this could be the case for non-final pipeline stages
+    if logits is not None and checkpoint_logits is not None:  # this could be the case for non-final pipeline stages
         if not (logits == checkpoint_logits).all().item():
             if mpu.get_data_parallel_rank() == 0:
                 print(
@@ -130,9 +119,7 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False, mp_rank=None
     return os.path.join(
         checkpoints_path,
         directory,
-        "mp_rank_{:02d}".format(
-            mpu.get_model_parallel_rank() if mp_rank is None else mp_rank
-        ),
+        "mp_rank_{:02d}".format(mpu.get_model_parallel_rank() if mp_rank is None else mp_rank),
         "model_optim_rng.pt",
     )
 
@@ -143,11 +130,7 @@ def delete_old_checkpoints(save_dir, n_to_keep):
         if save_dir.endswith("/"):
             save_dir = save_dir.strip("/")
         all_ckpts = natural_sort(
-            [
-                i
-                for i in glob(f"{save_dir}/*")
-                if os.path.isdir(i) and re.search(ckpt_dir_regex, i)
-            ]
+            [i for i in glob(f"{save_dir}/*") if os.path.isdir(i) and re.search(ckpt_dir_regex, i)]
         )
         n_to_delete = len(all_ckpts) - n_to_keep
         if n_to_delete > 0:
@@ -222,14 +205,10 @@ def save_checkpoint(neox_args, iteration, model, optimizer, lr_scheduler):
     torch.distributed.barrier()
 
 
-def load_checkpoint(
-    neox_args, model, optimizer, lr_scheduler, inference=False, iteration=None
-):
+def load_checkpoint(neox_args, model, optimizer, lr_scheduler, inference=False, iteration=None):
     """Load a model checkpoint and return the iteration."""
     if neox_args.deepspeed:
-        load_optim_and_scheduler = (
-            not neox_args.no_load_optim
-        )  # TODO: These should be configured by separate args
+        load_optim_and_scheduler = not neox_args.no_load_optim  # TODO: These should be configured by separate args
         if neox_args.finetune:
             load_optim_and_scheduler = False
         if iteration is not None:
@@ -248,10 +227,7 @@ def load_checkpoint(
             # continuing silently, since we are trying to load a specific checkpoint
             if iteration is not None:
                 available_checkpoints = sorted(
-                    [
-                        int(i.name.replace("global_step", ""))
-                        for i in Path(neox_args.load).glob("global_step*")
-                    ]
+                    [int(i.name.replace("global_step", "")) for i in Path(neox_args.load).glob("global_step*")]
                 )
                 raise ValueError(
                     f"Unable to load checkpoint for iteration {iteration}. \nAvailable iterations: {pformat(available_checkpoints)}"
@@ -279,9 +255,7 @@ def load_checkpoint(
     if "args" in state_dict:
         checkpoint_args = state_dict["args"]
         check_checkpoint_args(neox_args=neox_args, checkpoint_args=checkpoint_args)
-        print_rank_0(
-            " > validated currently set args with arguments in the checkpoint ..."
-        )
+        print_rank_0(" > validated currently set args with arguments in the checkpoint ...")
     else:
         print_rank_0(" > could not find arguments in the checkpoint for validation...")
 

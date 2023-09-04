@@ -25,9 +25,7 @@ torch._C._jit_override_can_fuse_on_cpu(True)
 torch._C._jit_override_can_fuse_on_gpu(True)
 
 
-def bias_dropout_add(
-    x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float, training: bool
-) -> Tensor:
+def bias_dropout_add(x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float, training: bool) -> Tensor:
     out = torch.nn.functional.dropout(x + bias, p=prob, training=training)
     if residual is not None:
         out = residual + out
@@ -42,14 +40,10 @@ def get_bias_dropout_add(training):
 
 
 @torch.jit.script
-def bias_dropout_add_fused_train(
-    x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float
-) -> Tensor:
+def bias_dropout_add_fused_train(x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float) -> Tensor:
     return bias_dropout_add(x, bias, residual, prob, True)
 
 
 @torch.jit.script
-def bias_dropout_add_fused_inference(
-    x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float
-) -> Tensor:
+def bias_dropout_add_fused_inference(x: Tensor, bias: Tensor, residual: Optional[Tensor], prob: float) -> Tensor:
     return bias_dropout_add(x, bias, residual, prob, False)

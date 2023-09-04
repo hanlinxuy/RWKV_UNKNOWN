@@ -7,11 +7,13 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from pytorch_lightning.utilities import rank_zero_info
+
 # from .binidx import MMapIndexedDataset
 # from .utils import MaybeIsPrime
 
 instruction_path = ""
 novel_path = ""
+
 
 class MyDataset(Dataset):
     def __init__(self, args):
@@ -19,7 +21,7 @@ class MyDataset(Dataset):
         self.data = np.load(args.data_file).astype("int")
         self.vocab_size = args.vocab_size
         self.data_size = len(self.data)
-        self.my_indices = np.where(self.data[: -args.ctx_len-1 ] == 65456)[0].tolist()
+        self.my_indices = np.where(self.data[: -args.ctx_len - 1] == 65456)[0].tolist()
         rank_zero_info("Current vocab size =", self.vocab_size, "(make sure it's correct)")
         rank_zero_info(f"Data has {self.data_size} tokens.")
         rank_zero_info(f"Data has {len(self.my_indices)} items.")
@@ -47,15 +49,13 @@ class MyDataset(Dataset):
         return x, y
 
 
-
-
 class MyDatasetNew(Dataset):
     def __init__(self, args):
         self.args = args
         self.data = np.load(args.data_file).astype("int")
         self.vocab_size = args.vocab_size
         self.data_size = len(self.data)
-        self.my_indices = np.where(self.data[: -args.ctx_len-1 ] == 65456)[0].tolist()
+        self.my_indices = np.where(self.data[: -args.ctx_len - 1] == 65456)[0].tolist()
         rank_zero_info("Current vocab size =", self.vocab_size, "(make sure it's correct)")
         rank_zero_info(f"Data has {self.data_size} tokens.")
         rank_zero_info(f"Data has {len(self.my_indices)} items.")

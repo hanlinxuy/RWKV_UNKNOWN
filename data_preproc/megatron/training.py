@@ -72,7 +72,6 @@ def mup_weights_reinit(neox_args, model):
 
 
 def save_base_shapes(neox_args, base_shapes, use_cache):
-
     # Instantiation of the base model fails in the init function (init_functions.py) because we haven't called set_base_shapes on it at this point, so disable it temporarily here
     neox_args.use_mup = False
 
@@ -133,9 +132,7 @@ def mup_coord_check(neox_args, timers, lr_scheduler, train_data_iterator):
             old_hidden_size = neox_args.hidden_size
             neox_args.hidden_size = hidden_size
 
-            model, optimizer, _ = setup_model_and_optimizer(
-                neox_args=neox_args, use_cache=False
-            )
+            model, optimizer, _ = setup_model_and_optimizer(neox_args=neox_args, use_cache=False)
 
             neox_args.hidden_size = old_hidden_size
 
@@ -150,13 +147,9 @@ def mup_coord_check(neox_args, timers, lr_scheduler, train_data_iterator):
         models[hidden_size] = lazy_model(hidden_size)
 
     neox_args.use_mup = True
-    df_up = get_coord_data(
-        neox_args, timers, lr_scheduler, models, train_data_iterator, mup=True
-    )
+    df_up = get_coord_data(neox_args, timers, lr_scheduler, models, train_data_iterator, mup=True)
     neox_args.use_mup = False
-    df_sp = get_coord_data(
-        neox_args, timers, lr_scheduler, models, train_data_iterator, mup=False
-    )
+    df_sp = get_coord_data(neox_args, timers, lr_scheduler, models, train_data_iterator, mup=False)
 
     plot_coord_data(df_up, save_to=f"coord_check_up.{torch.distributed.get_rank()}.jpg")
     plot_coord_data(df_sp, save_to=f"coord_check_sp.{torch.distributed.get_rank()}.jpg")
@@ -180,9 +173,7 @@ def pretrain(neox_args):
     """
     # setup logging and timers
     init_wandb(neox_args=neox_args)
-    timers = Timers(
-        use_wandb=neox_args.use_wandb, tensorboard_writer=neox_args.tensorboard_writer
-    )
+    timers = Timers(use_wandb=neox_args.use_wandb, tensorboard_writer=neox_args.tensorboard_writer)
 
     # Initialize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(neox_args=neox_args)
@@ -334,17 +325,13 @@ def get_batch_pipe(data, neox_args, curr_scheduler=None):
             if loss_mask is not None:
                 loss_mask = loss_mask[:, :curriculum_seqlen].contiguous()
             # attention_mask has size [1, 1, seqlen, seqlen]
-            attention_mask = attention_mask[
-                :, :, :curriculum_seqlen, :curriculum_seqlen
-            ].contiguous()
+            attention_mask = attention_mask[:, :, :curriculum_seqlen, :curriculum_seqlen].contiguous()
 
     # unpack data
     return (tokens, position_ids, attention_mask), (labels, loss_mask)
 
 
-def forward_step(
-    data_iterator, model, neox_args, timers, return_logits=False, is_train=False
-):
+def forward_step(data_iterator, model, neox_args, timers, return_logits=False, is_train=False):
     """Forward step."""
     if neox_args.is_pipe_parallel:
         return model.eval_batch(data_iterator, return_logits=return_logits)
@@ -360,16 +347,10 @@ def forward_step(
         timers("batch generator").stop()
 
     outputs = model((tokens, position_ids, attention_mask), neox_args=neox_args)
-    if (
-        is_train
-        and neox_args.curriculum_learning
-        and neox_args.curriculum_seqlen < neox_args.seq_length
-    ):
+    if is_train and neox_args.curriculum_learning and neox_args.curriculum_seqlen < neox_args.seq_length:
         loss_mask = loss_mask[:, : neox_args.curriculum_seqlen].contiguous()
         labels = labels[:, : neox_args.curriculum_seqlen].contiguous()
-    loss = cross_entropy(
-        outputs, (labels, loss_mask), _fp16=neox_args.fp16_lm_cross_entropy
-    )
+    loss = cross_entropy(outputs, (labels, loss_mask), _fp16=neox_args.fp16_lm_cross_entropy)
     if return_logits:
         return loss, outputs
     return loss
@@ -394,9 +375,7 @@ def get_model(neox_args, use_cache=False):
     )
 
     ### soft prompt tuning stuff ###
-    if neox_args.soft_prompt_tuning is not None and neox_args.soft_prompt_tuning.get(
-        "enabled", False
-    ):
+    if neox_args.soft_prompt_tuning is not None and neox_args.soft_prompt_tuning.get("enabled", False):
         soft_prompt = SoftEmbedding(
             neox_args,
             wte=getattr(model, "0").word_embeddings,
@@ -449,9 +428,7 @@ def get_optimizer(model, neox_args):
         return None, None
     # Build parameter groups (weight decay and non-decay).
     param_groups = get_params_for_weight_decay_optimization(model, neox_args)
-    print_rank_0(
-        f'Configuring Optimizer type: {neox_args.optimizer_type} with params: {neox_args.optimizer["params"]}'
-    )
+    print_rank_0(f'Configuring Optimizer type: {neox_args.optimizer_type} with params: {neox_args.optimizer["params"]}')
 
     # Add model parallel attribute if it is not set.
     for param_group in param_groups:
@@ -469,8 +446,7 @@ def get_optimizer(model, neox_args):
 
     # If we're using mup, then the optimizer must be adam or sgd
     assert not neox_args.use_mup or (
-        neox_args.optimizer_type.lower() == "adam"
-        or neox_args.optimizer_type.lower() == "sgd"
+        neox_args.optimizer_type.lower() == "adam" or neox_args.optimizer_type.lower() == "sgd"
     ), f"If use_mup == True, you must specify either the adam or sgd optimizers. You passed: {neox_args.optimizer_type.lower()}"
 
     if neox_args.optimizer_type.lower() in ["cpu_adam", "cpu_torch_adam"]:
@@ -518,9 +494,7 @@ def get_optimizer(model, neox_args):
 
                     adam_optimizer = bnb.optim.Adam8bit
                 except ModuleNotFoundError:
-                    print(
-                        "Please install bitsandbytes following https://github.com/facebookresearch/bitsandbytes."
-                    )
+                    print("Please install bitsandbytes following https://github.com/facebookresearch/bitsandbytes.")
                     raise Exception
             else:
                 try:
@@ -528,9 +502,7 @@ def get_optimizer(model, neox_args):
                     from apex.optimizers import FusedAdam as Adam
                 except ImportError:
                     # if apex isn't installed, use deepspeed's FusedAdam
-                    print(
-                        "WARNING: APEX not installed - defaulting to deepspeed's fused adam"
-                    )
+                    print("WARNING: APEX not installed - defaulting to deepspeed's fused adam")
                     from deepspeed.ops.adam import FusedAdam as Adam
                 adam_optimizer = Adam
         optimizer = adam_optimizer(
@@ -632,11 +604,7 @@ def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
                     curr_scheduler.update_difficulty(iteration)
             else:
                 curr_scheduler = None
-            model.set_batch_fn(
-                partial(
-                    get_batch_pipe, neox_args=neox_args, curr_scheduler=curr_scheduler
-                )
-            )
+            model.set_batch_fn(partial(get_batch_pipe, neox_args=neox_args, curr_scheduler=curr_scheduler))
     else:
         raise ValueError("Must be using deepspeed to run neox")
 
@@ -648,9 +616,7 @@ def setup_model_and_optimizer(neox_args, use_cache=False, iteration=None):
             lr_scheduler=lr_scheduler,
             iteration=iteration,
         )
-        print_rank_0(
-            f"Loading checkpoint and starting from iteration {neox_args.iteration}"
-        )
+        print_rank_0(f"Loading checkpoint and starting from iteration {neox_args.iteration}")
     else:
         neox_args.iteration = 0
 
@@ -681,9 +647,7 @@ def train_step(neox_args, timers, data_iterator, model, optimizer, lr_scheduler)
 
     # Pipeline parallelism schedules forward/backward/step
     if neox_args.is_pipe_parallel:
-        reduced_loss = train_step_pipe(
-            neox_args=neox_args, timers=timers, model=model, data_iterator=data_iterator
-        )
+        reduced_loss = train_step_pipe(neox_args=neox_args, timers=timers, model=model, data_iterator=data_iterator)
     else:
         losses = []
         for _ in range(neox_args.gradient_accumulation_steps):
@@ -715,9 +679,7 @@ def train_step(neox_args, timers, data_iterator, model, optimizer, lr_scheduler)
             else:
                 raise ValueError("Must be using deepspeed to run neox")
             timers("optimizer").stop()
-        reduced_loss = {
-            "lm_loss": reduce_losses(losses).mean()
-        }  # reduces losses across machines for logging
+        reduced_loss = {"lm_loss": reduce_losses(losses).mean()}  # reduces losses across machines for logging
 
     if neox_args.precision == "fp16" and model.optimizer.overflow:
         skipped_iter = 1
@@ -824,11 +786,7 @@ def train(
             )
 
         # Evaluation
-        if (
-            neox_args.eval_interval
-            and iteration % neox_args.eval_interval == 0
-            and neox_args.do_valid
-        ):
+        if neox_args.eval_interval and iteration % neox_args.eval_interval == 0 and neox_args.do_valid:
             prefix = "iteration {}".format(iteration)
             evaluate_and_print_results(
                 neox_args=neox_args,
@@ -845,19 +803,13 @@ def train(
             torch.distributed.barrier()
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             rank = torch.distributed.get_rank()
-            print_rank_0(
-                "rank: {} | time: {} | exiting the program at iteration {}".format(
-                    rank, time_str, iteration
-                )
-            )
+            print_rank_0("rank: {} | time: {} | exiting the program at iteration {}".format(rank, time_str, iteration))
             sys.exit()
 
     return iteration
 
 
-def evaluate(
-    neox_args, forward_step_fn, data_iterator, model, verbose=False, timers=None
-):
+def evaluate(neox_args, forward_step_fn, data_iterator, model, verbose=False, timers=None):
     """Evaluation.
     neox_args: NeoX Arguments
     forward_step_fn: function with args `neox_args, timers,
@@ -878,18 +830,12 @@ def evaluate(
         while iteration < neox_args.eval_iters:
             iteration += 1
             if verbose and iteration % neox_args.log_interval == 0:
-                print_rank_0(
-                    "Evaluating iter {}/{}".format(iteration, neox_args.eval_iters)
-                )
+                print_rank_0("Evaluating iter {}/{}".format(iteration, neox_args.eval_iters))
 
             # although we're not accumulating gradients here, we count one iter as train_batch_size_per_gpu * g.a.s
             # to be consistent with deepspeed's pipe parallel engine
             # since pipe parallel already takes gas into account - default to 1 here if pipe parallel is true
-            for _ in range(
-                1
-                if neox_args.is_pipe_parallel
-                else neox_args.gradient_accumulation_steps
-            ):
+            for _ in range(1 if neox_args.is_pipe_parallel else neox_args.gradient_accumulation_steps):
                 # Forward evaluation
                 loss = forward_step_fn(
                     model=model,
@@ -918,15 +864,11 @@ def evaluate(
         print_rank_0(f"Counting chars took {data_iterator.total_time} seconds")
 
         data_iterator = data_iterator.data_iterator
-        eval_results["lm_loss_char_lvl_ppl"] = math.exp(
-            eval_results["lm_loss"] * tokens_per_char
-        )
+        eval_results["lm_loss_char_lvl_ppl"] = math.exp(eval_results["lm_loss"] * tokens_per_char)
 
     if neox_args.eval_tasks:
         eval_results.update(
-            run_eval_harness(
-                model, forward_step_fn, neox_args, eval_tasks=neox_args.eval_tasks
-            ).get("results")
+            run_eval_harness(model, forward_step_fn, neox_args, eval_tasks=neox_args.eval_tasks).get("results")
         )
     # Move model back to the train mode.
     model.train()

@@ -53,13 +53,9 @@ def report_memory(name):
     mega_bytes = 1024.0 * 1024.0
     string = name + " memory (MB)"
     string += " | allocated: {}".format(torch.cuda.memory_allocated() / mega_bytes)
-    string += " | max allocated: {}".format(
-        torch.cuda.max_memory_allocated() / mega_bytes
-    )
+    string += " | max allocated: {}".format(torch.cuda.max_memory_allocated() / mega_bytes)
     string += " | reserved: {}".format(torch.cuda.memory_reserved() / mega_bytes)
-    string += " | max reserved: {}".format(
-        torch.cuda.max_memory_reserved() / mega_bytes
-    )
+    string += " | max reserved: {}".format(torch.cuda.max_memory_reserved() / mega_bytes)
     print_rank_0(string)
 
 
@@ -68,9 +64,7 @@ def get_attn_mask(seq_length, device):
     Get triangular attention mask for a given sequence length / device.
     """
     # lower triangular attention mask
-    mask = torch.tril(torch.ones((1, seq_length, seq_length), device=device)).view(
-        1, 1, seq_length, seq_length
-    )
+    mask = torch.tril(torch.ones((1, seq_length, seq_length), device=device)).view(1, 1, seq_length, seq_length)
 
     # convert to binary
     return mask < 0.5
@@ -154,9 +148,7 @@ def init_wandb(neox_args):
         return
 
     if not neox_args.wandb_init_all_ranks:
-        use_wandb = is_local_main() and (
-            get_wandb_api_key(neox_args=neox_args) is not None
-        )
+        use_wandb = is_local_main() and (get_wandb_api_key(neox_args=neox_args) is not None)
         neox_args.update_value("use_wandb", use_wandb)
     if neox_args.use_wandb:
         group_name = neox_args.wandb_group
@@ -180,9 +172,7 @@ def init_wandb(neox_args):
         wandb.config.update(neox_args.all_config)
 
 
-def obtain_resource_pool(
-    hostfile_path, include_arg, exclude_arg
-) -> Dict[str, List[int]]:
+def obtain_resource_pool(hostfile_path, include_arg, exclude_arg) -> Dict[str, List[int]]:
     """
     Get dict of `resource_pool[hostname] = [list of GPU ranks]` using hostfile, include and exclude args.
     Modified from: `deepspeed.launcher.runner.main`
@@ -195,9 +185,7 @@ def obtain_resource_pool(
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool["localhost"] = device_count
 
-    active_resources = parse_inclusion_exclusion(
-        resource_pool, include_arg, exclude_arg
-    )
+    active_resources = parse_inclusion_exclusion(resource_pool, include_arg, exclude_arg)
     return active_resources
 
 
@@ -329,8 +317,7 @@ def expand_attention_types(attention_config, num_layers):
         # instead of specifying a number - we can specify 'all' to extend this pattern across all layers
         if item[1] == "all":
             assert num_layers % len(item[0]) == 0, (
-                f"Number of layers ({num_layers}) is not divisible by the length "
-                f"of pattern: {item[0]}"
+                f"Number of layers ({num_layers}) is not divisible by the length " f"of pattern: {item[0]}"
             )
             return item[0] * (num_layers // len(item[0]))
         for _ in range(item[1]):
@@ -352,14 +339,8 @@ class OverflowMonitor:
 
     def check(self, skipped):
         self.history.append(skipped)
-        if (
-            self.optimizer.overflow
-            and len(self.history) == self.n
-            and all(self.history)
-        ):
-            raise Exception(
-                f"Skipped {self.n} iterations in a row due to Overflow - Exiting training."
-            )
+        if self.optimizer.overflow and len(self.history) == self.n and all(self.history):
+            raise Exception(f"Skipped {self.n} iterations in a row due to Overflow - Exiting training.")
 
 
 def get_noise_scale_logger(neox_args):
@@ -387,9 +368,7 @@ def get_total_params(model):
     if mpu.get_data_parallel_rank() == 0:
         params = sum([p.nelement() for p in model.parameters()])
         print(
-            " > number of parameters on model parallel rank {}: {}".format(
-                mpu.get_model_parallel_rank(), params
-            ),
+            " > number of parameters on model parallel rank {}: {}".format(mpu.get_model_parallel_rank(), params),
             flush=True,
         )
     else:
