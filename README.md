@@ -10,3 +10,4 @@ Please visit: https://github.com/BlinkDL/RWKV-LM
 # Reference
 - For easy usage, I just copy data preprocessor from [TrainChatGalRWKV](https://github.com/SynthiaDL/TrainChatGalRWKV/)
 - Thanks to [neromous](https://github.com/neromous/) for the initaial code.
+- Thanks to [RWKV-infctx-trainer](https://github.com/RWKV/RWKV-infctx-trainer) for the model initialization code.
