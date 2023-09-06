@@ -1,20 +1,21 @@
 ########################################################################################################
 # The RWKV Language Model - https://github.com/BlinkDL/RWKV-LM
 ########################################################################################################
-
+import sys
 import os, math, gc, importlib
 import torch
 # torch._C._jit_set_profiling_executor(True)
 # torch._C._jit_set_profiling_mode(True)
 import torch.nn as nn
 from torch.nn import functional as F
-import pytorch_lightning as pl
-from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
-from pytorch_lightning.strategies import DeepSpeedStrategy
-if importlib.util.find_spec('deepspeed'):
-    import deepspeed
-    from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
+#import pytorch_lightning as pl
+#from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
+#from pytorch_lightning.strategies import DeepSpeedStrategy
+import time
 
+import deepspeed
+from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
+deepspeed.ops.op_builder.CPUAdamBuilder().load()
 # from deepspeed.runtime.fp16.onebit.zoadam import ZeroOneAdam
 
 try:
@@ -134,127 +135,6 @@ else:
 def RUN_CUDA(B, T, C, w, u, k, v):
     return WKV.apply(B, T, C, w, u, k, v)
 
-########################################################################################################
-
-class RWKV_TimeMix_RWKV5_Preview(MyModule):
-    def __init__(self, args, layer_id):
-        super().__init__()
-        self.args = args
-        self.layer_id = layer_id
-        self.ctx_len = args.ctx_len
-        self.n_embd = args.n_embd
-
-        self.head_size = 64
-        self.n_head = self.n_embd // self.head_size
-        assert self.n_embd % self.n_head == 0
-
-        self.chunk_len = 512
-        assert self.ctx_len % self.chunk_len == 0
-
-        with torch.no_grad():
-            ratio_0_to_1 = layer_id / (args.n_layer - 1)  # 0 to 1
-            ratio_1_to_almost0 = 1.0 - (layer_id / args.n_layer)  # 1 to ~0
-            ddd = torch.ones(1, 1, args.n_embd)
-            for i in range(args.n_embd):
-                ddd[0, 0, i] = i / args.n_embd
-
-            # fancy time_mix
-            self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
-            self.time_mix_v = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
-            self.time_mix_r = nn.Parameter(torch.pow(ddd, 0.5 * ratio_1_to_almost0))
-
-            # fancy time_decay
-            decay_speed = torch.ones(self.n_head)
-            for h in range(self.n_head):
-                decay_speed[h] = -10 + 9 * (h / (self.n_head - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
-            self.time_decay = nn.Parameter(decay_speed)
-            # print(layer_id, self.time_decay.flatten()[:3].cpu().numpy(), '...', self.time_decay.flatten()[-3:].cpu().numpy())
-
-            self.time_first = nn.Parameter(torch.ones(self.n_head) * (-2.0))
-
-        self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        self.receptance = nn.Linear(args.n_embd, args.dim_att, bias=False)
-        self.key = nn.Linear(args.n_embd, args.dim_att, bias=False)
-        self.value = nn.Linear(args.n_embd, args.dim_att, bias=False)
-        self.output = nn.Linear(args.dim_att, args.n_embd, bias=False)
-
-        self.ln_x = nn.GroupNorm(self.n_head, self.n_embd)
-
-    @MyFunction
-    def jit_func(self, x):
-        B, TT, C = x.size()
-
-        xx = self.time_shift(x) # Mix x with the previous timestep to produce xk, xv, xr
-        xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
-        xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
-        xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
-
-        r = self.receptance(xr).view(B, TT, self.n_head, self.head_size).transpose(1, 2)            # BTC -> BHTS
-        k = self.key(xk).view(B, TT, self.n_head, self.head_size).transpose(1, 2).transpose(-2, -1) # BTC -> BHTS -> BHST
-        v = self.value(xv).view(B, TT, self.n_head, self.head_size).transpose(1, 2)                 # BTC -> BHTS
-
-        return r, k, v
-
-    @MyFunction
-    def jit_func_2(self, r, k, v, w, wk, wb, ws):
-        B, H, TT, S = r.size()
-        T = self.chunk_len
-
-        s = torch.zeros(B, H, S, S, device=r.device, dtype=r.dtype)  # state
-        x = torch.zeros(B, H, TT, S, device=r.device, dtype=r.dtype) # output
-
-################################################################################
-########
-        for i in range(TT // T):
-            rr = r[:, :, i*T:i*T+T, :]
-            kk = k[:, :, :, i*T:i*T+T]
-            vv = v[:, :, i*T:i*T+T, :]
-
-            x[:, :, i*T:i*T+T, :] = ((rr @ kk) * w) @ vv  +  (rr @ s) * wb
-
-            s = ws * s + (kk * wk) @ vv
-########
-################################################################################
-        
-        x = x.transpose(1, 2).contiguous().view(B * TT, H*S) # BHTS -> BTHS -> BTC
-        x = self.ln_x(x).view(B, TT, H*S)
-        return self.output(x)
-    
-    def forward(self, x):
-        H = self.n_head
-        T = self.chunk_len
-
-        r, k, v = self.jit_func(x)
-
-        w = torch.exp(-torch.exp(self.time_decay.float())).unsqueeze(-1)
-        u = torch.exp(self.time_first.float()).unsqueeze(-1)
-
-################################################################################
-########
-        ws = w.pow(T).reshape(1, H, 1, 1)
-
-        ind = torch.arange(T-1, -1, -1, device=r.device).unsqueeze(0).repeat(H, 1)
-        w = w.repeat(1, T).pow(ind)
-
-        wk = w.reshape(1, H, 1, T)
-        wb = wk.transpose(-2, -1).flip(2)
-
-        w = torch.cat([w[:, 1:], u], dim=1)
-        w = F.pad(w, (0, T))
-        w = torch.tile(w, [T])
-        w = w[:, :-T].reshape(-1, T, 2 * T - 1)
-        w = w[:, :, T-1:].reshape(1, H, T, T)
-########
-################################################################################
-
-        w = w.to(dtype=r.dtype)
-        wk = wk.to(dtype=r.dtype)
-        wb = wb.to(dtype=r.dtype)
-        ws = ws.to(dtype=r.dtype)
-        return self.jit_func_2(r, k, v, w, wk, wb, ws)
-
-########################################################################################################
-# RWKV: RWKV Time-mix + RWKV Channel-mix
 ########################################################################################################
 
 
@@ -443,22 +323,9 @@ class Block(nn.Module):
         if self.layer_id == 0 and self.args.pre_ffn > 0:
             self.ffnPre = RWKV_ChannelMix(args, 0)
         else:
-            if 'r' in os.environ["RWKV_MY_TESTING"]:
-                self.att = RWKV_TimeMix_RWKV5_Preview(args, layer_id)
-            else:
-                self.att = RWKV_TimeMix(args, layer_id)
+            self.att = RWKV_TimeMix(args, layer_id)
 
-        if 'g' in os.environ["RWKV_MY_TESTING"]:
-            self.ffn = MishGLU(args, layer_id)
-        else:
-            self.ffn = RWKV_ChannelMix(args, layer_id)
-        
-        if args.tiny_att_dim > 0 and self.layer_id == args.tiny_att_layer:
-            self.tiny_ln = nn.LayerNorm(args.n_embd)
-            self.tiny_q = nn.Linear(args.n_embd, args.tiny_att_dim, bias=False)
-            self.tiny_k = nn.Linear(args.n_embd, args.tiny_att_dim, bias=False)
-            self.tiny_v = nn.Linear(args.n_embd, args.n_embd, bias=False)
-            self.register_buffer("tiny_mask", torch.tril(torch.ones(args.ctx_len, args.ctx_len)))
+        self.ffn = RWKV_ChannelMix(args, layer_id)
 
     def forward(self, x, x_emb=None):
         args = self.args
@@ -474,16 +341,7 @@ class Block(nn.Module):
         else:
             x = x + self.att(self.ln1(x))
         x = x + self.ffn(self.ln2(x))
-
-        if args.tiny_att_dim > 0 and self.layer_id == args.tiny_att_layer:
-            xx = self.tiny_ln(x)
-            q = self.tiny_q(xx)[:, :T, :]
-            k = self.tiny_k(xx)[:, :T, :]
-            c = (q @ k.transpose(-2, -1)) * (args.tiny_att_dim ** (-0.5))
-            c = c.masked_fill(self.tiny_mask[:T, :T] == 0, 0)
-            x = x + c @ self.tiny_v(x_emb)
         return x
-
 
 class L2Wrap(torch.autograd.Function):
     @staticmethod
@@ -501,8 +359,8 @@ class L2Wrap(torch.autograd.Function):
         gy.scatter_(-1, ids, maxx * factor)
         return (grad_output, gy)
 
-
-class RWKV(pl.LightningModule):
+  
+class RWKV(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -522,10 +380,6 @@ class RWKV(pl.LightningModule):
         self.ln_out = nn.LayerNorm(args.n_embd)
         self.head = nn.Linear(args.n_embd, args.vocab_size, bias=False)
 
-        if args.head_qk > 0:
-            self.head_q = nn.Linear(args.n_embd, args.head_qk, bias=False)
-            self.head_k = nn.Linear(args.n_embd, args.head_qk, bias=False)
-            self.register_buffer("copy_mask", torch.tril(torch.ones(args.ctx_len, args.ctx_len)))
 
     def configure_optimizers(self):
         args = self.args
@@ -556,192 +410,61 @@ class RWKV(pl.LightningModule):
         lr_1x = sorted(list(lr_1x))
         lr_2x = sorted(list(lr_2x))
         lr_3x = sorted(list(lr_3x))
-        # print('decay', lr_decay)
-        # print('1x', lr_1x)
-        # print('2x', lr_2x)
-        # print('3x', lr_3x)
         param_dict = {n: p for n, p in self.named_parameters()}
-        
-        if args.layerwise_lr > 0:
-            if args.my_pile_stage == 2:
-                optim_groups = [
-                    {"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0},
-                    {"params": [param_dict[n] for n in lr_2x], "weight_decay": 0.0, "my_lr_scale": 5.0},# test: 2e-3 / args.lr_init},
-                    {"params": [param_dict[n] for n in lr_3x], "weight_decay": 0.0, "my_lr_scale": 5.0},# test: 3e-3 / args.lr_init},
-                ]
-            else:
-                optim_groups = [
-                    {"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0},
-                    {"params": [param_dict[n] for n in lr_2x], "weight_decay": 0.0, "my_lr_scale": 2.0},
-                    {"params": [param_dict[n] for n in lr_3x], "weight_decay": 0.0, "my_lr_scale": 3.0},
-                ]
-        else:
-            optim_groups = [{"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0}]
 
-        if args.weight_decay > 0:
-            optim_groups += [{"params": [param_dict[n] for n in lr_decay], "weight_decay": args.weight_decay, "my_lr_scale": 1.0}]
-            if self.deepspeed_offload:
-                return DeepSpeedCPUAdam(optim_groups, lr=self.args.lr_init, betas=self.args.betas, eps=self.args.adam_eps, bias_correction=True, adamw_mode=True, amsgrad=False)
-            return FusedAdam(optim_groups, lr=self.args.lr_init, betas=self.args.betas, eps=self.args.adam_eps, bias_correction=True, adam_w_mode=True, amsgrad=False)
-        else:
-            if self.deepspeed_offload:
-                return DeepSpeedCPUAdam(optim_groups, lr=self.args.lr_init, betas=self.args.betas, eps=self.args.adam_eps, bias_correction=True, adamw_mode=False, weight_decay=0, amsgrad=False)
-            return FusedAdam(optim_groups, lr=self.args.lr_init, betas=self.args.betas, eps=self.args.adam_eps, bias_correction=True, adam_w_mode=False, weight_decay=0, amsgrad=False)
-        # return ZeroOneAdam(optim_groups, lr=self.args.lr_init, betas=self.args.betas, eps=self.args.adam_eps, bias_correction=True, weight_decay=0, amsgrad=False, cuda_aware=False)
+        optim_groups = [{"params": [param_dict[n] for n in lr_1x],
+                         #"weight_decay": 0.0,
+                         #"my_lr_scale": 1.0
+                         }]
+        return optim_groups
 
-    @property
-    def deepspeed_offload(self) -> bool:
-        strategy = self.trainer.strategy
-        if isinstance(strategy, DeepSpeedStrategy):
-            cfg = strategy.config["zero_optimization"]
-            return cfg.get("offload_optimizer") or cfg.get("offload_param")
-        return False
-
-    def forward(self, idx):
+    def forward(self, batch):
         args = self.args
+        layer_logits = []
+        #idx, targets, mask = x,y,z
+        idx, targets, mask = batch
+        mask = mask.view(-1)
+        sum_mask = torch.sum(mask).item()
+        # logits = self(idx)
+        #-------- 计算 idx 到logits --------
         B, T = idx.size()
         assert T <= args.ctx_len, "Cannot forward, model ctx_len is exhausted."
 
         x = self.emb(idx)
         x_emb = x
 
-        if args.tiny_att_dim > 0:
-            for block in self.blocks:
-                if args.grad_cp == 1:
-                    x = deepspeed.checkpointing.checkpoint(block, x, x_emb)
-                else:
-                    x = block(x, x_emb)
-        else:
-            for block in self.blocks:
-                if args.grad_cp == 1:
-                    x = deepspeed.checkpointing.checkpoint(block, x)
-                else:
-                    x = block(x)
-
+        for block in self.blocks:
+            if args.grad_cp == 1:
+                x = deepspeed.checkpointing.checkpoint(block, x)
+            else:
+                x = block(x)
+            layer_logits.append(x)
         x = self.ln_out(x)
 
-        if args.head_qk > 0:
-            q = self.head_q(x)[:, :T, :]
-            k = self.head_k(x)[:, :T, :]
-            c = (q @ k.transpose(-2, -1)) * (1.0 / args.head_qk)
-            c = c.masked_fill(self.copy_mask[:T, :T] == 0, 0)
+        logits = self.head(x)
 
-            if "32" in os.environ["RWKV_FLOAT_MODE"]:
-                c = c @ F.one_hot(idx, num_classes=args.vocab_size)
-            elif os.environ["RWKV_FLOAT_MODE"] == "fp16":
-                c = c @ F.one_hot(idx, num_classes=args.vocab_size).half()
-            elif os.environ["RWKV_FLOAT_MODE"] == "bf16":
-                c = c @ F.one_hot(idx, num_classes=args.vocab_size).bfloat16()
+        #-------- 计算loss  --------
+        loss = F.cross_entropy(logits.view(-1, logits.size(-1)),
+                               targets.view(-1), reduction='none')
+        # loss_raw = loss
+        loss = torch.sum(loss * mask) / sum_mask
+        loss = L2Wrap.apply(loss, logits)
+        return loss,x,layer_logits
 
-            x = self.head(x) + c
-        else:
-            x = self.head(x)
 
-        return x
+    # def training_loss(self):
 
-    def training_step(self, batch, batch_idx):
-        args = self.args
-        if args.my_qa_mask != 1:
-            idx, targets = batch
-            logits = self(idx)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-        else:
-            idx, targets, mask = batch
-            mask = mask.view(-1)
-            sum_mask = torch.sum(mask).item()
-            # if sum_mask == 0:
-            #     return torch.tensor([0.0], requires_grad=True)
+    #     #  注入数据
 
-            logits = self(idx)
-            if sum_mask == mask.shape[0]:
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-                # print('rank', self.global_rank, 'loss', loss.item())
-            else:
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction='none')
-                # loss_raw = loss
-                loss = torch.sum(loss * mask) / sum_mask
+    #     if sum_mask == mask.shape[0]:
+    #         loss = F.cross_entropy(logits.view(-1, logits.size(-1)),
+    #                                targets.view(-1))
+    #         # print('rank', self.global_rank, 'loss', loss.item())
+    #     else:
 
-                # torch.set_printoptions(threshold=10000)
-                # if True: #self.global_rank == 1:
-                #     tmp = ''
-                #     sss = 0
-                #     ccc = 0
-                #     for i in range(mask.shape[0]):
-                #         if mask[i] > 0:
-                #             tmp += str(idx.view(-1)[i].item()) + ','
-                #             sss += loss_raw.view(-1)[i].float().item()
-                #             ccc += 1
-                #     print('rank', self.global_rank, 'loss', loss.item(), 'lavg', sss / ccc)#, 'tmp', tmp, 'input', idx)
 
-        return L2Wrap.apply(loss, logits)
+    #     if torch.any(torch.isnan(loss)):
+    #         print("\n=====error=======\n")
+    #         loss = torch.where(torch.isnan(loss), torch.full_like(loss,0), loss)
+    #     return loss
 
-    def training_step_end(self, batch_parts):
-        all = self.all_gather(batch_parts)
-        if self.trainer.is_global_zero:
-            self.trainer.my_loss_all = all
-
-    def generate_init_weight(self):
-        print(
-            f"""
-############################################################################
-#
-# Init model weight (slow for large models)...
-#
-############################################################################
-"""
-        )
-        m = {}
-        for n in self.state_dict():
-            p = self.state_dict()[n]
-            shape = p.shape
-
-            gain = 1.0
-            scale = 1.0
-            if "ln_" in n or ".ln" in n or "time_" in n or "_mask" in n or "pos_emb" in n or '.mask.' in n:
-                m[n] = p
-            else:
-                if n == "emb.weight":
-                    scale = -1 * self.args.lr_init
-                else:
-                    if shape[0] > shape[1]:
-                        gain = math.sqrt(shape[0] / shape[1])
-                    if 'r' in os.environ["RWKV_MY_TESTING"]:
-                        zero = [".att.output.", ".ffn.value.", ".ffn.receptance.", ".ffnPre.value.", ".ffnPre.receptance.", "head_q.", '.oo.', '.rr.']
-                    else:
-                        zero = [".att.key.", ".att.receptance.", ".att.output.", ".ffn.value.", ".ffn.receptance.", ".ffnPre.value.", ".ffnPre.receptance.", "head_q.", '.oo.', '.rr.']
-                    for kk in zero:
-                        if kk in n:
-                            scale = 0
-                    if n == "head.weight":
-                        scale = 0.5
-                    if "head_k." in n:
-                        scale = 0.1
-                    if "head_q." in n:
-                        scale = 0
-
-                print(f"{str(shape[0]).ljust(5)} {str(shape[1]).ljust(5)} {str(scale).ljust(4)} {n}")
-
-                if self.args.accelerator.upper() == "GPU":
-                    m[n] = torch.empty((shape[0], shape[1]), device="cuda")
-                else:
-                    m[n] = torch.empty((shape[0], shape[1]))
-
-                if scale == 0:
-                    nn.init.zeros_(m[n])
-                elif scale < 0:
-                    nn.init.uniform_(m[n], a=scale, b=-scale)
-                else:
-                    nn.init.orthogonal_(m[n], gain=gain * scale)
-
-            m[n] = m[n].cpu()
-            if os.environ["RWKV_FLOAT_MODE"] == "fp16":
-                m[n] = m[n].half()
-            elif os.environ["RWKV_FLOAT_MODE"] == "bf16":
-                m[n] = m[n].bfloat16()
-
-            # if n == "emb.weight":
-            #     print(m[n])
-
-        gc.collect()
-        torch.cuda.empty_cache()
-        return m

@@ -1,0 +1,11 @@
+RWKV_VOCAB=WORLD python train.py \
+  --load_model ""  \
+  --proj_dir out1b5_test --wandb ""\
+  --data_file "" \
+  --data_type dummy \
+  --vocab_size 0 --ctx_len 4096 --epoch_steps 100 --epoch_count 20 \
+  --epoch_begin 0 --epoch_save 1 --micro_bsz 1 --n_layer 24 --n_embd 2048 \
+  --pre_ffn 0 --head_qk 0 --lr_init 1e-4 --lr_final 1e-5 --warmup_steps 1000 \
+  --beta1 0.9 --beta2 0.999 --adam_eps 1e-8 --accelerator gpu --devices 1 \
+  --precision fp16 --grad_cp 1 --accumulate_grad_batches 1 --strategy deepspeed_stage_1 \
+  --use_retnet --retnet_official_name=retnet_medium
