@@ -1,7 +1,11 @@
 import argparse, math, os
 import torch.nn as nn
 import torch
-from src.model import RWKV
+os.environ["RWKV_T_MAX"] = "4096"
+os.environ["RWKV_MY_TESTING"] = "0"
+os.environ["RWKV_FLOAT_MODE"] = "32"
+os.environ["RWKV_JIT_ON"] = "1"
+from model.model import RWKV
 
 
 def init_model(
@@ -22,7 +26,8 @@ def init_model(
     # print(f'Existing model path: {existing_model_path}')
     print(f"Note: this process takes a significant time (and ram) for large models")
     print(f"---- ----- ----")
-
+    
+    
     # Check if the model exists
     if skip_if_exists and os.path.exists(output_model_path):
         print(f"Model exists, skipping init_model")
@@ -116,32 +121,28 @@ def init_model(
 
 def main():
     parser = argparse.ArgumentParser(description="CLI tool for model handling")
-    parser.add_argument("--n_layer", type=int, help="Number of layers")
-    parser.add_argument("--n_embd", type=int, help="Embedding size")
+    parser.add_argument("--n_layer", type=int, help="Number of layers", default=12)
+    parser.add_argument("--n_embd", type=int, help="Embedding size", default=768)
     parser.add_argument(
         "--vocab_size",
         type=str,
         help="Vocab size for the model as an int, alternativey use 'neox' or 'world' if using their respective tokenizer",
-        default="neox",
+        default="world",
     )
     parser.add_argument(
         "--skip-if-exists",
         type=bool,
-        action=argparse.BooleanOptionalAction,
         default=False,
         help="Skip the init if the model already exists, enables --safe-init if set",
     )
     parser.add_argument(
         "--safe-init",
         type=bool,
-        action=argparse.BooleanOptionalAction,
         default=False,
         help="Init in safe mode, where the model is first init as a tmp file, before overwritting/moving to the output path",
     )
 
-    # (todo) implement in the future, to support model resizing
-    # parser.add_argument('--existing_model_path', type=str, help='Existing model path', default=None)
-    parser.add_argument("output_model_path", type=str, help="Output model file path")
+    parser.add_argument("--output_model_path", type=str, help="Output model file path", default=os.getcwd()+ "/rwkv_tmp.pth")
 
     # Parse the args
     args = parser.parse_args()
