@@ -3,6 +3,11 @@
 This is my implementation of RWKV language model.
 
 
+```
+cd src
+deepspeed main.py --deepspeed --deepspeed_config=./configs/ds_config.config
+```
+
 # RWKV: Parallelizable RNN with Transformer-level LLM Performance (pronounced as "RwaKuv", from 4 major params: R W K V)
 
 Please visit: https://github.com/BlinkDL/RWKV-LM

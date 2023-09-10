@@ -37,7 +37,7 @@ if os.environ["RWKV_JIT_ON"] == "1":
     MyModule = torch.jit.ScriptModule
     MyFunction = torch.jit.script_method
 
-
+local_path = os.path.dirname(__file__)
 ########################################################################################################
 # CUDA Kernel
 ########################################################################################################
@@ -50,7 +50,7 @@ from torch.utils.cpp_extension import load
 if os.environ["RWKV_FLOAT_MODE"] == "bf16":
     wkv_cuda = load(
         name=f"wkv_{T_MAX}_bf16",
-        sources=["cuda/wkv_op_bf16.cpp", "cuda/wkv_cuda_bf16.cu"],
+        sources=[f"{local_path}/cuda/wkv_op_bf16.cpp", f"{local_path}/cuda/wkv_cuda_bf16.cu"],
         verbose=True,
         extra_cuda_cflags=[
             "-t 4",
@@ -102,7 +102,7 @@ if os.environ["RWKV_FLOAT_MODE"] == "bf16":
 else:
     wkv_cuda = load(
         name=f"wkv_{T_MAX}",
-        sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"],
+        sources=[f"{local_path}/cuda/wkv_op.cpp", f"{local_path}/cuda/wkv_cuda.cu"],
         verbose=True,
         extra_cuda_cflags=[
             "-res-usage",
@@ -360,9 +360,6 @@ class Block(nn.Module):
 
         if self.layer_id == 0:
             self.ln0 = nn.LayerNorm(args.n_embd)
-            if args.my_pos_emb > 0:
-                self.pos_emb_x = nn.Parameter(torch.zeros((1, args.my_pos_emb, args.n_embd)))
-                self.pos_emb_y = nn.Parameter(torch.zeros((args.my_pos_emb, 1, args.n_embd)))
 
         if self.layer_id == 0 and self.args.pre_ffn > 0:
             self.ffnPre = RWKV_ChannelMix(args, 0)
@@ -376,9 +373,6 @@ class Block(nn.Module):
         B, T, C = x.size()
         if self.layer_id == 0:
             x = self.ln0(x)
-            if args.my_pos_emb > 0:
-                pos_emb = (self.pos_emb_x + self.pos_emb_y).reshape(T + 1, -1)[:-1, :]
-                x = x + pos_emb
 
         if self.layer_id == 0 and args.pre_ffn > 0:
             x = x + self.ffnPre(self.ln1(x))
@@ -433,22 +427,16 @@ class RWKV(nn.Module):
         lr_2x = set()
         lr_3x = set()
         for n, p in self.named_parameters():
-            if ("time_mix" in n) and (args.layerwise_lr > 0):
-                if args.my_pile_stage == 2:
-                    lr_2x.add(n)
-                else:
-                    lr_1x.add(n)
-            elif ("time_decay" in n) and (args.layerwise_lr > 0):
-                if args.my_pile_stage == 2:
-                    lr_3x.add(n)
-                else:
-                    lr_2x.add(n)
-            elif ("time_first" in n) and (args.layerwise_lr > 0):
-                lr_3x.add(n)
-            elif (len(p.squeeze().shape) >= 2) and (args.weight_decay > 0):
-                lr_decay.add(n)
-            else:
-                lr_1x.add(n)
+            # if ("time_mix" in n) and (args.layerwise_lr > 0):
+            #         lr_1x.add(n)
+            # elif ("time_decay" in n) and (args.layerwise_lr > 0):
+            #         lr_2x.add(n)
+            # elif ("time_first" in n) and (args.layerwise_lr > 0):
+            #     lr_3x.add(n)
+            # elif (len(p.squeeze().shape) >= 2) and (args.weight_decay > 0):
+            #     lr_decay.add(n)
+            # else:
+            lr_1x.add(n)
 
         lr_decay = sorted(list(lr_decay))
         lr_1x = sorted(list(lr_1x))
