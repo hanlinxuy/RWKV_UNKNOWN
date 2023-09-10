@@ -7,6 +7,7 @@ import struct
 from functools import lru_cache
 from itertools import accumulate
 
+
 def print_rank_0(*message):
     pass
     # """If distributed is initialized print only on rank 0."""
@@ -16,11 +17,13 @@ def print_rank_0(*message):
     # else:
     #     print(*message, flush=True)
 
+
 def _warmup_mmap_file(path):
     pass
     # with open(path, "rb") as stream:
     #     while stream.read(100 * 1024 * 1024):
     #         pass
+
 
 dtypes = {
     1: np.uint8,
@@ -33,17 +36,21 @@ dtypes = {
     8: np.uint16,
 }
 
+
 def code(dtype):
     for k in dtypes.keys():
         if dtypes[k] == dtype:
             return k
     raise ValueError(dtype)
 
+
 def index_file_path(prefix_path):
     return prefix_path + ".idx"
 
+
 def data_file_path(prefix_path):
     return prefix_path + ".bin"
+
 
 class MMapIndexedDataset(torch.utils.data.Dataset):
     class Index(object):
@@ -100,13 +107,12 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
                     self._file.close()
 
             return _Writer()
-        
+
         def __init__(self, path, skip_warmup=False):
             with open(path, "rb") as stream:
                 magic_test = stream.read(9)
                 assert self._HDR_MAGIC == magic_test, (
-                    "Index file doesn't match expected format. "
-                    "Make sure that --dataset-impl is configured properly."
+                    "Index file doesn't match expected format. " "Make sure that --dataset-impl is configured properly."
                 )
                 # Little endian unsigned 64 Bit integer
                 version = struct.unpack("<Q", stream.read(8))
@@ -128,9 +134,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
             self._bin_buffer_mmap = np.memmap(path, mode="r", order="C")
             self._bin_buffer = memoryview(self._bin_buffer_mmap)
             print_rank_0("    reading sizes...")
-            self._sizes = np.frombuffer(
-                self._bin_buffer, dtype=np.int32, count=self._len, offset=offset
-            )
+            self._sizes = np.frombuffer(self._bin_buffer, dtype=np.int32, count=self._len, offset=offset)
             print_rank_0("    reading pointers...")
             self._pointers = np.frombuffer(
                 self._bin_buffer,
@@ -192,9 +196,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
             print_rank_0("    warming up data mmap file...")
             _warmup_mmap_file(data_file_path(self._path))
         print_rank_0("    creating numpy buffer of mmap...")
-        self._bin_buffer_mmap = np.memmap(
-            data_file_path(self._path), mode="r", order="C"
-        )
+        self._bin_buffer_mmap = np.memmap(data_file_path(self._path), mode="r", order="C")
         print_rank_0("    creating memory view of numpy buffer...")
         self._bin_buffer = memoryview(self._bin_buffer_mmap)
 
@@ -210,22 +212,17 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         if isinstance(idx, int):
             ptr, size = self._index[idx]
-            np_array = np.frombuffer(
-                self._bin_buffer, dtype=self._index.dtype, count=size, offset=ptr
-            )
+            np_array = np.frombuffer(self._bin_buffer, dtype=self._index.dtype, count=size, offset=ptr)
             return np_array
         elif isinstance(idx, slice):
             start, stop, step = idx.indices(len(self))
             if step != 1:
-                raise ValueError(
-                    "Slices into indexed_dataset must be contiguous")
+                raise ValueError("Slices into indexed_dataset must be contiguous")
             ptr = self._index._pointers[start]
             sizes = self._index._sizes[idx]
             offsets = list(accumulate(sizes))
             total_size = sum(sizes)
-            np_array = np.frombuffer(
-                self._bin_buffer, dtype=self._index.dtype, count=total_size, offset=ptr
-            )
+            np_array = np.frombuffer(self._bin_buffer, dtype=self._index.dtype, count=total_size, offset=ptr)
             sents = np.split(np_array, offsets[:-1])
             return sents
 
@@ -239,9 +236,7 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
         if length is None:
             length = size - offset
         ptr += offset * np.dtype(self._index.dtype).itemsize
-        np_array = np.frombuffer(
-            self._bin_buffer, dtype=self._index.dtype, count=length, offset=ptr
-        )
+        np_array = np.frombuffer(self._bin_buffer, dtype=self._index.dtype, count=length, offset=ptr)
         return np_array
 
     @property
@@ -264,6 +259,4 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
 
     @staticmethod
     def exists(path):
-        return os.path.exists(index_file_path(path)) and os.path.exists(
-            data_file_path(path)
-        )
+        return os.path.exists(index_file_path(path)) and os.path.exists(data_file_path(path))

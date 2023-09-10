@@ -4,7 +4,6 @@
 
 import os, math, gc, importlib
 import torch
-from torch import Tensor
 
 # torch._C._jit_set_profiling_executor(True)
 # torch._C._jit_set_profiling_mode(True)
@@ -28,123 +27,6 @@ except:
 
 def __nop(ob):
     return ob
-
-
-# NOTE: These are main function to make fp16 training useable, but noone knnows it can learn efficienctly.
-
-# here are some hp for clipping.
-FP16_LIMIT = 65504
-GRAD_LIMIT = 4
-LARGE_GRAD_LIMIT = 1
-RELAX_GRAD_LIMIT = 128
-
-
-class sym_protector(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, tensor_in):
-        tensor_out = torch.nan_to_num(
-            tensor_in, nan=0.0, posinf=FP16_LIMIT, neginf=-FP16_LIMIT
-        )
-        return tensor_out
-
-    @staticmethod
-    def backward(ctx, grad_tensor_in):
-        grad_tensor_out = torch.nan_to_num(
-            grad_tensor_in, nan=0.0, posinf=FP16_LIMIT, neginf=-FP16_LIMIT
-        )
-        grad_tensor_out = torch.clip(grad_tensor_out, -GRAD_LIMIT, GRAD_LIMIT)
-        return grad_tensor_out
-
-
-class large_tensor_sym_protector(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, tensor_in):
-        tensor_out = torch.nan_to_num(
-            tensor_in, nan=0.0, posinf=FP16_LIMIT, neginf=-FP16_LIMIT
-        )
-        return tensor_out
-
-    @staticmethod
-    def backward(ctx, grad_tensor_in):
-        grad_tensor_out = torch.nan_to_num(
-            grad_tensor_in, nan=0.0, posinf=FP16_LIMIT, neginf=-FP16_LIMIT
-        )
-        grad_tensor_out = torch.clip(
-            grad_tensor_out, -LARGE_GRAD_LIMIT, LARGE_GRAD_LIMIT
-        )
-        return grad_tensor_out
-
-
-class relax_protector(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, tensor_in):
-        return tensor_in
-
-    @staticmethod
-    def backward(ctx, grad_tensor_in):
-        grad_tensor_out = torch.nan_to_num(
-            grad_tensor_in, nan=0.0, posinf=FP16_LIMIT, neginf=-FP16_LIMIT
-        )
-        grad_tensor_out = torch.clip(
-            grad_tensor_out, -RELAX_GRAD_LIMIT, RELAX_GRAD_LIMIT
-        )
-        return grad_tensor_out
-
-
-class FP16_LINEAR(nn.Linear):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = sym_protector.apply(self.weight)
-        input = sym_protector.apply(input)
-        return sym_protector.apply(F.linear(input, weight, self.bias))
-
-
-class FP16_LARGETENSOR_LINEAR(nn.Linear):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = large_tensor_sym_protector.apply(self.weight)
-        input = sym_protector.apply(input)
-        return sym_protector.apply(F.linear(input, weight, self.bias))
-
-
-class FP16_EMBEDDING(nn.Embedding):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = large_tensor_sym_protector.apply(self.weight)
-        input = sym_protector.apply(input)
-        return sym_protector.apply(
-            F.embedding(
-                input,
-                weight,
-                self.padding_idx,
-                self.max_norm,
-                self.norm_type,
-                self.scale_grad_by_freq,
-                self.sparse,
-            )
-        )
-
-
-class FP16_LAYERNORM(nn.LayerNorm):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = sym_protector.apply(self.weight)
-        input = sym_protector.apply(input)
-        return sym_protector.apply(
-            F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
-        )
-
-
-class FP16_LINEAR_RELAXED(nn.Linear):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = relax_protector.apply(self.weight)
-        input = relax_protector.apply(input)
-        return relax_protector.apply(F.linear(input, weight, self.bias))
-
-
-class FP16_LAYERNORM_RELAXED(nn.LayerNorm):
-    def forward(self, input: Tensor) -> Tensor:
-        weight = relax_protector.apply(self.weight)
-        input = relax_protector.apply(input)
-        return relax_protector.apply(
-            F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
-        )
 
 
 MyModule = nn.Module
@@ -193,12 +75,7 @@ if os.environ["RWKV_FLOAT_MODE"] == "bf16":
             u = u.contiguous()
             k = k.contiguous()
             v = v.contiguous()
-            y = torch.empty(
-                (B, T, C),
-                device=w.device,
-                memory_format=torch.contiguous_format,
-                dtype=torch.bfloat16,
-            )
+            y = torch.empty((B, T, C), device=w.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16)
             wkv_cuda.forward(B, T, C, w, u, k, v, y)
             ctx.save_for_backward(w, u, k, v, y)
             return y
@@ -211,30 +88,10 @@ if os.environ["RWKV_FLOAT_MODE"] == "bf16":
             assert T <= T_MAX
             assert B * C % min(C, 32) == 0
             w, u, k, v, y = ctx.saved_tensors
-            gw = torch.empty(
-                (B, C),
-                device=gy.device,
-                memory_format=torch.contiguous_format,
-                dtype=torch.bfloat16,
-            )
-            gu = torch.empty(
-                (B, C),
-                device=gy.device,
-                memory_format=torch.contiguous_format,
-                dtype=torch.bfloat16,
-            )
-            gk = torch.empty(
-                (B, T, C),
-                device=gy.device,
-                memory_format=torch.contiguous_format,
-                dtype=torch.bfloat16,
-            )
-            gv = torch.empty(
-                (B, T, C),
-                device=gy.device,
-                memory_format=torch.contiguous_format,
-                dtype=torch.bfloat16,
-            )
+            gw = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16)
+            gu = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16)
+            gk = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16)
+            gv = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16)
             wkv_cuda.backward(B, T, C, w, u, k, v, y, gy.contiguous(), gw, gu, gk, gv)
             gw = torch.sum(gw, dim=0)
             gu = torch.sum(gu, dim=0)
@@ -274,9 +131,7 @@ else:
                 u = u.float().contiguous()
                 k = k.float().contiguous()
                 v = v.float().contiguous()
-            y = torch.empty(
-                (B, T, C), device=w.device, memory_format=torch.contiguous_format
-            )
+            y = torch.empty((B, T, C), device=w.device, memory_format=torch.contiguous_format)
             wkv_cuda.forward(B, T, C, w, u, k, v, y)
             ctx.save_for_backward(w, u, k, v, y)
             if "32" in os.environ["RWKV_FLOAT_MODE"]:
@@ -294,26 +149,14 @@ else:
             assert T <= T_MAX
             assert B * C % min(C, 32) == 0
             w, u, k, v, y = ctx.saved_tensors
-            gw = torch.empty(
-                (B, C), device=gy.device, memory_format=torch.contiguous_format
-            )
-            gu = torch.empty(
-                (B, C), device=gy.device, memory_format=torch.contiguous_format
-            )
-            gk = torch.empty(
-                (B, T, C), device=gy.device, memory_format=torch.contiguous_format
-            )
-            gv = torch.empty(
-                (B, T, C), device=gy.device, memory_format=torch.contiguous_format
-            )
+            gw = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format)
+            gu = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format)
+            gk = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format)
+            gv = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format)
             if "32" in os.environ["RWKV_FLOAT_MODE"]:
-                wkv_cuda.backward(
-                    B, T, C, w, u, k, v, y, gy.contiguous(), gw, gu, gk, gv
-                )
+                wkv_cuda.backward(B, T, C, w, u, k, v, y, gy.contiguous(), gw, gu, gk, gv)
             else:
-                wkv_cuda.backward(
-                    B, T, C, w, u, k, v, y, gy.float().contiguous(), gw, gu, gk, gv
-                )
+                wkv_cuda.backward(B, T, C, w, u, k, v, y, gy.float().contiguous(), gw, gu, gk, gv)
             gw = torch.sum(gw, dim=0)
             gu = torch.sum(gu, dim=0)
             if "32" in os.environ["RWKV_FLOAT_MODE"]:
@@ -321,26 +164,135 @@ else:
             elif os.environ["RWKV_FLOAT_MODE"] == "fp16":
                 return (None, None, None, gw.half(), gu.half(), gk.half(), gv.half())
             elif os.environ["RWKV_FLOAT_MODE"] == "bf16":
-                return (
-                    None,
-                    None,
-                    None,
-                    gw.bfloat16(),
-                    gu.bfloat16(),
-                    gk.bfloat16(),
-                    gv.bfloat16(),
-                )
+                return (None, None, None, gw.bfloat16(), gu.bfloat16(), gk.bfloat16(), gv.bfloat16())
 
 
 def RUN_CUDA(B, T, C, w, u, k, v):
-    return sym_protector.apply(WKV.apply(B, T, C, w, u, k, v))
-
-
-def RUN_CUDA_RELAXED(B, T, C, w, u, k, v):
-    return relax_protector.apply(WKV.apply(B, T, C, w, u, k, v))
+    return WKV.apply(B, T, C, w, u, k, v)
 
 
 ########################################################################################################
+
+
+class RWKV_TimeMix_RWKV5_Preview(MyModule):
+    def __init__(self, args, layer_id):
+        super().__init__()
+        self.args = args
+        self.layer_id = layer_id
+        self.ctx_len = args.ctx_len
+        self.n_embd = args.n_embd
+
+        self.head_size = 64
+        self.n_head = self.n_embd // self.head_size
+        assert self.n_embd % self.n_head == 0
+
+        self.chunk_len = 512
+        assert self.ctx_len % self.chunk_len == 0
+
+        with torch.no_grad():
+            ratio_0_to_1 = layer_id / (args.n_layer - 1)  # 0 to 1
+            ratio_1_to_almost0 = 1.0 - (layer_id / args.n_layer)  # 1 to ~0
+            ddd = torch.ones(1, 1, args.n_embd)
+            for i in range(args.n_embd):
+                ddd[0, 0, i] = i / args.n_embd
+
+            # fancy time_mix
+            self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
+            self.time_mix_v = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
+            self.time_mix_r = nn.Parameter(torch.pow(ddd, 0.5 * ratio_1_to_almost0))
+
+            # fancy time_decay
+            decay_speed = torch.ones(self.n_head)
+            for h in range(self.n_head):
+                decay_speed[h] = -10 + 9 * (h / (self.n_head - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
+            self.time_decay = nn.Parameter(decay_speed)
+            # print(layer_id, self.time_decay.flatten()[:3].cpu().numpy(), '...', self.time_decay.flatten()[-3:].cpu().numpy())
+
+            self.time_first = nn.Parameter(torch.ones(self.n_head) * (-2.0))
+
+        self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
+        self.receptance = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.key = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.value = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.output = nn.Linear(args.dim_att, args.n_embd, bias=False)
+
+        self.ln_x = nn.GroupNorm(self.n_head, self.n_embd)
+
+    @MyFunction
+    def jit_func(self, x):
+        B, TT, C = x.size()
+
+        xx = self.time_shift(x)  # Mix x with the previous timestep to produce xk, xv, xr
+        xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+        xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
+        xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+
+        r = self.receptance(xr).view(B, TT, self.n_head, self.head_size).transpose(1, 2)  # BTC -> BHTS
+        k = (
+            self.key(xk).view(B, TT, self.n_head, self.head_size).transpose(1, 2).transpose(-2, -1)
+        )  # BTC -> BHTS -> BHST
+        v = self.value(xv).view(B, TT, self.n_head, self.head_size).transpose(1, 2)  # BTC -> BHTS
+
+        return r, k, v
+
+    @MyFunction
+    def jit_func_2(self, r, k, v, w, wk, wb, ws):
+        B, H, TT, S = r.size()
+        T = self.chunk_len
+
+        s = torch.zeros(B, H, S, S, device=r.device, dtype=r.dtype)  # state
+        x = torch.zeros(B, H, TT, S, device=r.device, dtype=r.dtype)  # output
+
+        ################################################################################
+        ########
+        for i in range(TT // T):
+            rr = r[:, :, i * T : i * T + T, :]
+            kk = k[:, :, :, i * T : i * T + T]
+            vv = v[:, :, i * T : i * T + T, :]
+
+            x[:, :, i * T : i * T + T, :] = ((rr @ kk) * w) @ vv + (rr @ s) * wb
+
+            s = ws * s + (kk * wk) @ vv
+        ########
+        ################################################################################
+
+        x = x.transpose(1, 2).contiguous().view(B * TT, H * S)  # BHTS -> BTHS -> BTC
+        x = self.ln_x(x).view(B, TT, H * S)
+        return self.output(x)
+
+    def forward(self, x):
+        H = self.n_head
+        T = self.chunk_len
+
+        r, k, v = self.jit_func(x)
+
+        w = torch.exp(-torch.exp(self.time_decay.float())).unsqueeze(-1)
+        u = torch.exp(self.time_first.float()).unsqueeze(-1)
+
+        ################################################################################
+        ########
+        ws = w.pow(T).reshape(1, H, 1, 1)
+
+        ind = torch.arange(T - 1, -1, -1, device=r.device).unsqueeze(0).repeat(H, 1)
+        w = w.repeat(1, T).pow(ind)
+
+        wk = w.reshape(1, H, 1, T)
+        wb = wk.transpose(-2, -1).flip(2)
+
+        w = torch.cat([w[:, 1:], u], dim=1)
+        w = F.pad(w, (0, T))
+        w = torch.tile(w, [T])
+        w = w[:, :-T].reshape(-1, T, 2 * T - 1)
+        w = w[:, :, T - 1 :].reshape(1, H, T, T)
+        ########
+        ################################################################################
+
+        w = w.to(dtype=r.dtype)
+        wk = wk.to(dtype=r.dtype)
+        wb = wb.to(dtype=r.dtype)
+        ws = ws.to(dtype=r.dtype)
+        return self.jit_func_2(r, k, v, w, wk, wb, ws)
+
 
 ########################################################################################################
 # RWKV: RWKV Time-mix + RWKV Channel-mix
@@ -365,60 +317,45 @@ class RWKV_TimeMix(MyModule):
             # fancy time_decay
             decay_speed = torch.ones(args.dim_att)
             for h in range(args.dim_att):
-                decay_speed[h] = -5 + 8 * (h / (args.dim_att - 1)) ** (
-                    0.7 + 1.3 * ratio_0_to_1
-                )
+                decay_speed[h] = -5 + 8 * (h / (args.dim_att - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
             self.time_decay = nn.Parameter(decay_speed)
             # print(layer_id, self.time_decay.flatten()[:3].cpu().numpy(), '...', self.time_decay.flatten()[-3:].cpu().numpy())
 
             # fancy time_first
             zigzag = torch.tensor([(i + 1) % 3 - 1 for i in range(args.dim_att)]) * 0.5
-            self.time_first = nn.Parameter(
-                torch.ones(args.dim_att) * math.log(0.3) + zigzag
-            )
+            self.time_first = nn.Parameter(torch.ones(args.dim_att) * math.log(0.3) + zigzag)
 
             # fancy time_mix
             self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
-            self.time_mix_v = nn.Parameter(
-                torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1
-            )
+            self.time_mix_v = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
             self.time_mix_r = nn.Parameter(torch.pow(ddd, 0.5 * ratio_1_to_almost0))
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        if layer_id == 0:
-            self.key = FP16_LINEAR(args.n_embd, args.dim_att, bias=False)
-            self.value = FP16_LINEAR(args.n_embd, args.dim_att, bias=False)
-            self.receptance = FP16_LINEAR(args.n_embd, args.dim_att, bias=False)
-            self.output = FP16_LINEAR(args.dim_att, args.n_embd, bias=False)
+        self.key = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.value = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.receptance = nn.Linear(args.n_embd, args.dim_att, bias=False)
+        self.output = nn.Linear(args.dim_att, args.n_embd, bias=False)
 
-        else:
-            self.key = FP16_LINEAR_RELAXED(args.n_embd, args.dim_att, bias=False)
-            self.value = FP16_LINEAR_RELAXED(args.n_embd, args.dim_att, bias=False)
-            self.receptance = FP16_LINEAR_RELAXED(args.n_embd, args.dim_att, bias=False)
-            self.output = FP16_LINEAR_RELAXED(args.dim_att, args.n_embd, bias=False)
+        if "a" in os.environ["RWKV_MY_TESTING"]:
+            self.register_buffer("att_mask", torch.tril(torch.ones(args.ctx_len, args.ctx_len)))
+            d_qkv = args.n_embd // 16
+            self.qq = nn.Linear(args.n_embd, d_qkv, bias=False)
+            self.kk = nn.Linear(args.n_embd, d_qkv, bias=False)
+            self.vv = nn.Linear(args.n_embd, d_qkv, bias=False)
+            self.oo = nn.Linear(d_qkv, args.n_embd, bias=False)
+            with torch.no_grad():
+                self.time_mix_qq = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
+                self.time_mix_kk = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
+                self.time_mix_vv = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
 
     if "a" not in os.environ["RWKV_MY_TESTING"]:
 
         @MyFunction
         def jit_func(self, x):
-            xx = self.time_shift(
-                x
-            )  # Mix x with the previous timestep to produce xk, xv, xr
-            if self.layer_id == 0:
-                tmk, tmv, tmr = (
-                    sym_protector.apply(self.time_mix_k),
-                    sym_protector.apply(self.time_mix_v),
-                    sym_protector.apply(self.time_mix_r),
-                )
-            else:
-                tmk, tmv, tmr = (
-                    relax_protector.apply(self.time_mix_k),
-                    relax_protector.apply(self.time_mix_v),
-                    relax_protector.apply(self.time_mix_r),
-                )
-            xk = x * tmk + xx * (1 - tmk)
-            xv = x * tmv + xx * (1 - tmv)
-            xr = x * tmr + xx * (1 - tmr)
+            xx = self.time_shift(x)  # Mix x with the previous timestep to produce xk, xv, xr
+            xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+            xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
+            xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
             k = self.key(xk)
             v = self.value(xv)
             r = self.receptance(xr)
@@ -428,15 +365,43 @@ class RWKV_TimeMix(MyModule):
         def forward(self, x):
             B, T, C = x.size()  # x = (Batch,Time,Channel)
             sr, k, v = self.jit_func(x)
-            if self.layer_id == 0:
-                rwkv = sr * RUN_CUDA(
-                    B, T, self.args.dim_att, self.time_decay, self.time_first, k, v
-                )
-            else:
-                rwkv = sr * RUN_CUDA_RELAXED(
-                    B, T, self.args.dim_att, self.time_decay, self.time_first, k, v
-                )
+            rwkv = sr * RUN_CUDA(B, T, self.args.dim_att, self.time_decay, self.time_first, k, v)
             return self.output(rwkv)
+
+    if "a" in os.environ["RWKV_MY_TESTING"]:
+
+        @MyFunction
+        def QKV(self, q, k, v):
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.att_mask == 0, float("-inf"))
+            att = F.softmax(att, dim=-1)
+            x = att @ v
+            return x
+
+        @MyFunction
+        def jit_funcQKV(self, x):
+            xx = self.time_shift(x)  # Mix x with the previous timestep to produce xk, xv, xr
+            xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+            xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
+            xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+            xqq = x * self.time_mix_qq + xx * (1 - self.time_mix_qq)
+            xkk = x * self.time_mix_kk + xx * (1 - self.time_mix_kk)
+            xvv = x * self.time_mix_vv + xx * (1 - self.time_mix_vv)
+            k = self.key(xk)
+            v = self.value(xv)
+            r = self.receptance(xr)
+            sr = torch.sigmoid(r)
+            qq = self.qq(xqq)
+            kk = self.kk(xkk)
+            vv = self.vv(xvv)
+            return sr, k, v, qq, kk, vv
+
+        def forward(self, x):
+            B, T, C = x.size()  # x = (Batch,Time,Channel)
+            sr, k, v, qq, kk, vv = self.jit_funcQKV(x)
+            rwkv = sr * RUN_CUDA(B, T, self.args.dim_att, self.time_decay, self.time_first, k, v)
+            rwkv = self.output(rwkv) + self.oo(self.QKV(qq, kk, vv))
+            return rwkv
 
 
 ########################################################################################################
@@ -456,29 +421,50 @@ class RWKV_ChannelMix(MyModule):
                 ddd[0, 0, i] = i / args.n_embd
             self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
             self.time_mix_r = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
-        if layer_id == 0:
-            self.key = FP16_LINEAR(args.n_embd, args.dim_ffn, bias=False)
-            self.receptance = FP16_LINEAR(args.n_embd, args.n_embd, bias=False)
-            self.value = FP16_LINEAR(args.dim_ffn, args.n_embd, bias=False)
-        else:
-            self.key = FP16_LINEAR_RELAXED(args.n_embd, args.dim_ffn, bias=False)
-            self.receptance = FP16_LINEAR_RELAXED(args.n_embd, args.n_embd, bias=False)
-            self.value = FP16_LINEAR_RELAXED(args.dim_ffn, args.n_embd, bias=False)
+
+        self.key = nn.Linear(args.n_embd, args.dim_ffn, bias=False)
+        self.receptance = nn.Linear(args.n_embd, args.n_embd, bias=False)
+        self.value = nn.Linear(args.dim_ffn, args.n_embd, bias=False)
 
     @MyFunction
     def forward(self, x):
         xx = self.time_shift(x)
-        tmk, tmr = sym_protector.apply(self.time_mix_k), sym_protector.apply(
-            self.time_mix_r
-        )
-        xk = x * tmk + xx * (1 - tmk)
-        xr = x * tmr + xx * (1 - tmr)
+        xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+        xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
         k = self.key(xk)
-        if self.layer_id == 0:
-            k = torch.clip(k, -255.0, 255.0)
         k = torch.square(torch.relu(k))
         kv = self.value(k)
-        return sym_protector.apply(torch.sigmoid(self.receptance(xr)) * kv)
+        return torch.sigmoid(self.receptance(xr)) * kv
+
+
+class MishGLU(MyModule):
+    def __init__(self, args, layer_id):
+        super().__init__()
+        self.args = args
+        self.layer_id = layer_id
+        self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
+
+        with torch.no_grad():
+            ratio_1_to_almost0 = 1.0 - (layer_id / args.n_layer)
+
+            x = torch.ones(1, 1, args.n_embd)
+            for i in range(args.n_embd):
+                x[0, 0, i] = i / args.n_embd
+
+            self.time_mix_k = nn.Parameter(torch.pow(x, ratio_1_to_almost0))
+            self.time_mix_r = nn.Parameter(torch.pow(x, ratio_1_to_almost0))
+            self.aa = nn.Linear(args.n_embd, args.dim_ffn, bias=False)
+            self.bb = nn.Linear(args.n_embd, args.dim_ffn, bias=False)
+            self.value = nn.Linear(args.dim_ffn, args.n_embd, bias=False)
+
+    @MyFunction
+    def forward(self, x):
+        xx = self.time_shift(x)
+        xa = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+        xb = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+        a = self.aa(xa)
+        b = self.bb(xb)
+        return self.value(a * F.mish(b))
 
 
 ########################################################################################################
@@ -491,32 +477,35 @@ class Block(nn.Module):
         super().__init__()
         self.args = args
         self.layer_id = layer_id
-        if layer_id == 0:
-            self.ln1 = FP16_LAYERNORM(args.n_embd)
-            self.ln2 = FP16_LAYERNORM(args.n_embd)
-        else:
-            self.ln1 = FP16_LINEAR_RELAXED(args.n_embd)
-            self.ln2 = FP16_LINEAR_RELAXED(args.n_embd)
+
+        self.ln1 = nn.LayerNorm(args.n_embd)
+        self.ln2 = nn.LayerNorm(args.n_embd)
 
         if self.layer_id == 0:
-            self.ln0 = FP16_LAYERNORM(args.n_embd)
+            self.ln0 = nn.LayerNorm(args.n_embd)
             if args.my_pos_emb > 0:
-                NotImplementedError
+                self.pos_emb_x = nn.Parameter(torch.zeros((1, args.my_pos_emb, args.n_embd)))
+                self.pos_emb_y = nn.Parameter(torch.zeros((args.my_pos_emb, 1, args.n_embd)))
+
         if self.layer_id == 0 and self.args.pre_ffn > 0:
             self.ffnPre = RWKV_ChannelMix(args, 0)
         else:
             if "r" in os.environ["RWKV_MY_TESTING"]:
-                NotImplementedError
+                self.att = RWKV_TimeMix_RWKV5_Preview(args, layer_id)
             else:
                 self.att = RWKV_TimeMix(args, layer_id)
 
         if "g" in os.environ["RWKV_MY_TESTING"]:
-            NotImplementedError
+            self.ffn = MishGLU(args, layer_id)
         else:
             self.ffn = RWKV_ChannelMix(args, layer_id)
 
         if args.tiny_att_dim > 0 and self.layer_id == args.tiny_att_layer:
-            NotImplementedError
+            self.tiny_ln = nn.LayerNorm(args.n_embd)
+            self.tiny_q = nn.Linear(args.n_embd, args.tiny_att_dim, bias=False)
+            self.tiny_k = nn.Linear(args.n_embd, args.tiny_att_dim, bias=False)
+            self.tiny_v = nn.Linear(args.n_embd, args.n_embd, bias=False)
+            self.register_buffer("tiny_mask", torch.tril(torch.ones(args.ctx_len, args.ctx_len)))
 
     def forward(self, x, x_emb=None):
         args = self.args
@@ -534,7 +523,12 @@ class Block(nn.Module):
         x = x + self.ffn(self.ln2(x))
 
         if args.tiny_att_dim > 0 and self.layer_id == args.tiny_att_layer:
-            NotImplementedError
+            xx = self.tiny_ln(x)
+            q = self.tiny_q(xx)[:, :T, :]
+            k = self.tiny_k(xx)[:, :T, :]
+            c = (q @ k.transpose(-2, -1)) * (args.tiny_att_dim ** (-0.5))
+            c = c.masked_fill(self.tiny_mask[:T, :T] == 0, 0)
+            x = x + c @ self.tiny_v(x_emb)
         return x
 
 
@@ -568,15 +562,17 @@ class RWKV(pl.LightningModule):
         if not hasattr(args, "tiny_att_dim"):
             args.tiny_att_dim = -1
 
-        self.emb = FP16_EMBEDDING(args.vocab_size, args.n_embd)
+        self.emb = nn.Embedding(args.vocab_size, args.n_embd)
 
         self.blocks = nn.ModuleList([Block(args, i) for i in range(args.n_layer)])
 
-        self.ln_out = FP16_LAYERNORM(args.n_embd)
-        self.head = FP16_LARGETENSOR_LINEAR(args.n_embd, args.vocab_size, bias=False)
+        self.ln_out = nn.LayerNorm(args.n_embd)
+        self.head = nn.Linear(args.n_embd, args.vocab_size, bias=False)
 
         if args.head_qk > 0:
-            NotImplementedError
+            self.head_q = nn.Linear(args.n_embd, args.head_qk, bias=False)
+            self.head_k = nn.Linear(args.n_embd, args.head_qk, bias=False)
+            self.register_buffer("copy_mask", torch.tril(torch.ones(args.ctx_len, args.ctx_len)))
 
     def configure_optimizers(self):
         args = self.args
@@ -616,11 +612,7 @@ class RWKV(pl.LightningModule):
         if args.layerwise_lr > 0:
             if args.my_pile_stage == 2:
                 optim_groups = [
-                    {
-                        "params": [param_dict[n] for n in lr_1x],
-                        "weight_decay": 0.0,
-                        "my_lr_scale": 1.0,
-                    },
+                    {"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0},
                     {
                         "params": [param_dict[n] for n in lr_2x],
                         "weight_decay": 0.0,
@@ -634,38 +626,16 @@ class RWKV(pl.LightningModule):
                 ]
             else:
                 optim_groups = [
-                    {
-                        "params": [param_dict[n] for n in lr_1x],
-                        "weight_decay": 0.0,
-                        "my_lr_scale": 1.0,
-                    },
-                    {
-                        "params": [param_dict[n] for n in lr_2x],
-                        "weight_decay": 0.0,
-                        "my_lr_scale": 2.0,
-                    },
-                    {
-                        "params": [param_dict[n] for n in lr_3x],
-                        "weight_decay": 0.0,
-                        "my_lr_scale": 3.0,
-                    },
+                    {"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0},
+                    {"params": [param_dict[n] for n in lr_2x], "weight_decay": 0.0, "my_lr_scale": 2.0},
+                    {"params": [param_dict[n] for n in lr_3x], "weight_decay": 0.0, "my_lr_scale": 3.0},
                 ]
         else:
-            optim_groups = [
-                {
-                    "params": [param_dict[n] for n in lr_1x],
-                    "weight_decay": 0.0,
-                    "my_lr_scale": 1.0,
-                }
-            ]
+            optim_groups = [{"params": [param_dict[n] for n in lr_1x], "weight_decay": 0.0, "my_lr_scale": 1.0}]
 
         if args.weight_decay > 0:
             optim_groups += [
-                {
-                    "params": [param_dict[n] for n in lr_decay],
-                    "weight_decay": args.weight_decay,
-                    "my_lr_scale": 1.0,
-                }
+                {"params": [param_dict[n] for n in lr_decay], "weight_decay": args.weight_decay, "my_lr_scale": 1.0}
             ]
             if self.deepspeed_offload:
                 return DeepSpeedCPUAdam(
@@ -775,14 +745,10 @@ class RWKV(pl.LightningModule):
 
             logits = self(idx)
             if sum_mask == mask.shape[0]:
-                loss = F.cross_entropy(
-                    logits.view(-1, logits.size(-1)), targets.view(-1)
-                )
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
                 # print('rank', self.global_rank, 'loss', loss.item())
             else:
-                loss = F.cross_entropy(
-                    logits.view(-1, logits.size(-1)), targets.view(-1), reduction="none"
-                )
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction="none")
                 # loss_raw = loss
                 loss = torch.sum(loss * mask) / sum_mask
 
@@ -822,14 +788,7 @@ class RWKV(pl.LightningModule):
 
             gain = 1.0
             scale = 1.0
-            if (
-                "ln_" in n
-                or ".ln" in n
-                or "time_" in n
-                or "_mask" in n
-                or "pos_emb" in n
-                or ".mask." in n
-            ):
+            if "ln_" in n or ".ln" in n or "time_" in n or "_mask" in n or "pos_emb" in n or ".mask." in n:
                 m[n] = p
             else:
                 if n == "emb.weight":
@@ -871,9 +830,7 @@ class RWKV(pl.LightningModule):
                     if "head_q." in n:
                         scale = 0
 
-                print(
-                    f"{str(shape[0]).ljust(5)} {str(shape[1]).ljust(5)} {str(scale).ljust(4)} {n}"
-                )
+                print(f"{str(shape[0]).ljust(5)} {str(shape[1]).ljust(5)} {str(scale).ljust(4)} {n}")
 
                 if self.args.accelerator.upper() == "GPU":
                     m[n] = torch.empty((shape[0], shape[1]), device="cuda")

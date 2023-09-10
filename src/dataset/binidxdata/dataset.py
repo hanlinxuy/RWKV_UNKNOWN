@@ -24,8 +24,8 @@ class MyDataset(Dataset):
                 self.data_size = len(self.data._bin_buffer) // self.data._index._dtype_size
                 rank_zero_info(f"Data has {self.data_size} tokens.")
             elif args.my_pile_version == 2:
-                data_list = open(args.data_file, "r", encoding='utf-8').read().strip().split('\n')
-                data_list = [i.strip().split(' ') for i in data_list]
+                data_list = open(args.data_file, "r", encoding="utf-8").read().strip().split("\n")
+                data_list = [i.strip().split(" ") for i in data_list]
                 self.data = []
                 self.data_size = int(data_list[-1][-1])
                 rank_zero_info(f"Data has {self.data_size} chunks.")
@@ -38,7 +38,7 @@ class MyDataset(Dataset):
 
             if args.my_qa_mask > 0:
                 # self.data_pile = MMapIndexedDataset('/fsx/pile/pile_20B_tokenizer_text_document')
-                self.data_pile = MMapIndexedDataset('/fsx/pile_deduped/pile_0.87_deduped_text_document')
+                self.data_pile = MMapIndexedDataset("/fsx/pile_deduped/pile_0.87_deduped_text_document")
                 self.data_pile_size = len(self.data_pile._bin_buffer) // self.data._index._dtype_size
             else:
                 self.data_pile = None
@@ -112,36 +112,45 @@ class MyDataset(Dataset):
         # print(f"epoch {epoch} idx {idx} rank {rank}/{world_size}")
 
         if args.data_type == "wds_img":
+
             def init_wds(self, bias=0):
                 def identity(x):
-                    return x            
+                    return x
+
                 import webdataset as wds
                 import torchvision.transforms as transforms
+
                 # img_transform = transforms.Compose(
                 #     [transforms.CenterCrop(256)]
                 # )
-                img_transform = transforms.Compose([
-                    transforms.CenterCrop(512),
-                    transforms.Resize((args.my_img_size))
-                ])
-                self.data_raw = wds.WebDataset(args.data_file, resampled=True).shuffle(10000, initial=1000, rng=random.Random(epoch*100000+rank+bias*1e9)).decode("torchrgb").to_tuple("jpg", "json", "txt").map_tuple(img_transform, identity, identity)
+                img_transform = transforms.Compose([transforms.CenterCrop(512), transforms.Resize((args.my_img_size))])
+                self.data_raw = (
+                    wds.WebDataset(args.data_file, resampled=True)
+                    .shuffle(10000, initial=1000, rng=random.Random(epoch * 100000 + rank + bias * 1e9))
+                    .decode("torchrgb")
+                    .to_tuple("jpg", "json", "txt")
+                    .map_tuple(img_transform, identity, identity)
+                )
                 for pp in self.data_raw.pipeline:
-                    if 'Resampled' in str(pp):
+                    if "Resampled" in str(pp):
                         pp.deterministic = True
+
                         def worker_seed():
-                            return rank*100000+epoch+bias*1e9
+                            return rank * 100000 + epoch + bias * 1e9
+
                         pp.worker_seed = worker_seed
                 self.data = iter(self.data_raw)
                 # print(f"WebDataset loaded for rank {rank} epoch {epoch}")
+
             if self.data == None:
                 init_wds(self)
             trial = 0
             while trial < 10:
                 try:
-                    dd = next(self.data) # jpg, json, txt
+                    dd = next(self.data)  # jpg, json, txt
                     break
                 except:
-                    print(f'[dataloader error - epoch {epoch} rank {rank} - trying a new shuffle]')
+                    print(f"[dataloader error - epoch {epoch} rank {rank} - trying a new shuffle]")
                     self.error_count += 1
                     init_wds(self, self.error_count)
                     trial += 1
@@ -152,7 +161,7 @@ class MyDataset(Dataset):
             return dd[0], dd[2]
         else:
             if args.data_type == "uint16":
-                i = np.random.randint(0, self.data_size-1)
+                i = np.random.randint(0, self.data_size - 1)
                 dix = self.data[i]
                 x = torch.tensor(dix[:-1], dtype=torch.long)
                 y = torch.tensor(dix[1:], dtype=torch.long)
@@ -200,7 +209,7 @@ class MyDataset(Dataset):
                         for j in range(len(data)):
                             if i < data[j][0]:
                                 ii = i
-                                i = (i - (data[j-1][0] if j > 0 else 0)) % data[j][1]
+                                i = (i - (data[j - 1][0] if j > 0 else 0)) % data[j][1]
                                 dix = data[j][2].get(idx=0, offset=i, length=req_len).astype(int)
                                 # print(ii, j, i)
                                 break
@@ -217,7 +226,7 @@ class MyDataset(Dataset):
                         z_sum = 0
                         isGood = False
                         for i in range(3, ctx_len):
-                            if dix[i] == 27 and dix[i-1] == 34 and dix[i-2] == 187 and dix[i-3] == 187:
+                            if dix[i] == 27 and dix[i - 1] == 34 and dix[i - 2] == 187 and dix[i - 3] == 187:
                                 isGood = True
                             if dix[i] == 0:
                                 isGood = False

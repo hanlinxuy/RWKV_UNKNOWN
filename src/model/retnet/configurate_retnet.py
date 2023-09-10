@@ -29,17 +29,11 @@ def retnet_base_architecture(args):
     args.base_shuffle = getattr(args, "base_shuffle", False)
 
     args.add_bos_token = getattr(args, "add_bos_token", False)
-    args.no_token_positional_embeddings = getattr(
-        args, "no_token_positional_embeddings", False
-    )
-    args.share_decoder_input_output_embed = getattr(
-        args, "share_decoder_input_output_embed", False
-    )
+    args.no_token_positional_embeddings = getattr(args, "no_token_positional_embeddings", False)
+    args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.character_embeddings = getattr(args, "character_embeddings", False)
 
-    args.decoder_output_dim = getattr(
-        args, "decoder_output_dim", args.decoder_embed_dim
-    )
+    args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
     args.chunkwise_recurrent = getattr(args, "chunkwise_recurrent", False)

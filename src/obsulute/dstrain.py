@@ -67,7 +67,7 @@ if __name__ == "__main__":
     args.data_file = "/root/autodl-tmp/dollytest_text_document"
     # args.data_type = "utf-8"
     args.data_type = "binidx"
-    args.my_qa_mask=0
+    args.my_qa_mask = 0
     args.vocab_size = 65536
 
     args.ctx_len = 1024
@@ -140,11 +140,16 @@ if __name__ == "__main__":
     ##################################################################################
     # train_data = MyDataset(args)
     train_data = MyDataset(args)
-    data_loader = DataLoader(train_data, 
-                             shuffle=False, pin_memory=True, 
-                             batch_size=args.micro_bsz, num_workers=1, 
-                             persistent_workers=False, drop_last=True)
-    
+    data_loader = DataLoader(
+        train_data,
+        shuffle=False,
+        pin_memory=True,
+        batch_size=args.micro_bsz,
+        num_workers=1,
+        persistent_workers=False,
+        drop_last=True,
+    )
+
     args.vocab_size = train_data.vocab_size
     model = RWKV(args)
     load_dict = torch.load(args.load_model, map_location="cpu")

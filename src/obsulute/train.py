@@ -56,12 +56,18 @@ if __name__ == "__main__":
 
     parser.add_argument("--data_file", default="", type=str)
     parser.add_argument("--data_type", default="utf-8", type=str)
-    parser.add_argument("--vocab_size", default=0, type=int)  # vocab_size = 0 means auto (for char-level LM and .txt data)
+    parser.add_argument(
+        "--vocab_size", default=0, type=int
+    )  # vocab_size = 0 means auto (for char-level LM and .txt data)
 
     parser.add_argument("--ctx_len", default=1024, type=int)
     parser.add_argument("--epoch_steps", default=1000, type=int)  # a mini "epoch" has [epoch_steps] steps
-    parser.add_argument("--epoch_count", default=500, type=int)  # train for this many "epochs". will continue afterwards with lr = lr_final
-    parser.add_argument("--epoch_begin", default=0, type=int)  # if you load a model trained for x "epochs", set epoch_begin = x
+    parser.add_argument(
+        "--epoch_count", default=500, type=int
+    )  # train for this many "epochs". will continue afterwards with lr = lr_final
+    parser.add_argument(
+        "--epoch_begin", default=0, type=int
+    )  # if you load a model trained for x "epochs", set epoch_begin = x
     parser.add_argument("--epoch_save", default=5, type=int)  # save the model every [epoch_save] "epochs"
 
     parser.add_argument("--micro_bsz", default=12, type=int)  # micro batch size (batch size per GPU)
@@ -74,7 +80,9 @@ if __name__ == "__main__":
     parser.add_argument("--tiny_att_dim", default=0, type=int)  # tiny attention dim
     parser.add_argument("--tiny_att_layer", default=-999, type=int)  # tiny attention @ which layer
 
-    parser.add_argument("--lr_init", default=6e-4, type=float)  # 6e-4 for L12-D768, 4e-4 for L24-D1024, 3e-4 for L24-D2048
+    parser.add_argument(
+        "--lr_init", default=6e-4, type=float
+    )  # 6e-4 for L12-D768, 4e-4 for L24-D1024, 3e-4 for L24-D2048
     parser.add_argument("--lr_final", default=1e-5, type=float)
     parser.add_argument("--warmup_steps", default=-1, type=int)  # try 50 if you load a model
     parser.add_argument("--beta1", default=0.9, type=float)
@@ -82,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("--adam_eps", default=1e-8, type=float)
     parser.add_argument("--grad_cp", default=0, type=int)  # gradient checkpt: saves VRAM, but slower
     parser.add_argument("--dropout", default=0, type=float)
-    parser.add_argument("--weight_decay", default=0, type=float) # try 0.1 / 0.01 / 0.001
+    parser.add_argument("--weight_decay", default=0, type=float)  # try 0.1 / 0.01 / 0.001
 
     parser.add_argument("--my_pile_version", default=1, type=int)  # my special pile version
     parser.add_argument("--my_pile_stage", default=0, type=int)  # my special pile mode
@@ -95,10 +103,10 @@ if __name__ == "__main__":
     parser.add_argument("--my_img_version", default=0, type=str)
     parser.add_argument("--my_img_size", default=0, type=int)
     parser.add_argument("--my_img_bit", default=0, type=int)
-    parser.add_argument("--my_img_clip", default='x', type=str)
+    parser.add_argument("--my_img_clip", default="x", type=str)
     parser.add_argument("--my_img_clip_scale", default=1, type=float)
     parser.add_argument("--my_img_l1_scale", default=0, type=float)
-    parser.add_argument("--my_img_encoder", default='x', type=str)
+    parser.add_argument("--my_img_encoder", default="x", type=str)
     # parser.add_argument("--my_img_noise_scale", default=0, type=float)
     parser.add_argument("--my_sample_len", default=0, type=int)
     parser.add_argument("--my_ffn_shift", default=1, type=int)
@@ -108,14 +116,12 @@ if __name__ == "__main__":
     parser.add_argument("--magic_prime", default=0, type=int)
     parser.add_argument("--my_qa_mask", default=0, type=int)
     parser.add_argument("--my_random_steps", default=0, type=int)
-    parser.add_argument("--my_testing", default='', type=str)
+    parser.add_argument("--my_testing", default="", type=str)
     parser.add_argument("--my_exit", default=99999999, type=int)
     parser.add_argument("--my_exit_tokens", default=-1, type=int)
-    # activate retnet official model implementation 
-    parser.add_argument("--use_retnet", default=False, action='store_true')
-    parser.add_argument("--retnet_official_name", default='retnet_base', type=str)
-
-
+    # activate retnet official model implementation
+    parser.add_argument("--use_retnet", default=False, action="store_true")
+    parser.add_argument("--retnet_official_name", default="retnet_base", type=str)
 
     parser = Trainer.add_argparse_args(parser)
     args = parser.parse_args()
@@ -127,6 +133,7 @@ if __name__ == "__main__":
     import numpy as np
     import torch
     from torch.utils.data import DataLoader
+
     if "deepspeed" in args.strategy:
         import deepspeed
     import pytorch_lightning as pl
@@ -275,7 +282,6 @@ if __name__ == "__main__":
             rank_zero_info("\n\nNote: you are using fp32 (very slow). Try bf16 / tf32 for faster training.\n\n")
     if args.precision == "fp16":
         rank_zero_info("\n\nNote: you are using fp16 (might overflow). Try bf16 / tf32 for stable training.\n\n")
-        
 
     os.environ["RWKV_JIT_ON"] = "1"
     if "deepspeed_stage_3" in args.strategy:
@@ -307,22 +313,27 @@ if __name__ == "__main__":
 
     if args.use_retnet:
         from retnet.wrap_retnet import get_retnet_model
+
         rank_zero_info("USING RETNET WRAPPER")
         model = get_retnet_model(args)
-    elif args.precision=="fp16" or args.precision==16:
-        from model.model_fp16 import RWKV 
+    elif args.precision == "fp16" or args.precision == 16:
+        from model.model_fp16 import RWKV
+
         rank_zero_info("\n\nNote: Loading fp16 modified model. Recommend to use with deepspeed_stage_2_offload\n\n")
         model = RWKV(args)
     else:
-        if args.data_type == 'wds_img':
+        if args.data_type == "wds_img":
             from model.model_img import RWKV_IMG
+
             model = RWKV_IMG(args)
         else:
             if args.dropout > 0:
                 from model.model_drop2 import RWKV
+
                 model = RWKV(args)
             else:
                 from model.model import RWKV
+
                 model = RWKV(args)
 
     if len(args.load_model) == 0 or args.my_pile_stage == 1:  # shall we build the initial weights?
@@ -371,6 +382,14 @@ if __name__ == "__main__":
         trainer.strategy.config["zero_optimization"]["reduce_bucket_size"] = args.ds_bucket_mb * 1000 * 1000
 
     # must set shuffle=False, persistent_workers=False (because worker is in another thread)
-    data_loader = DataLoader(train_data, shuffle=False, pin_memory=True, batch_size=args.micro_bsz, num_workers=1, persistent_workers=False, drop_last=True)
+    data_loader = DataLoader(
+        train_data,
+        shuffle=False,
+        pin_memory=True,
+        batch_size=args.micro_bsz,
+        num_workers=1,
+        persistent_workers=False,
+        drop_last=True,
+    )
 
     trainer.fit(model, data_loader)

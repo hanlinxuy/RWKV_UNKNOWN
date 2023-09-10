@@ -27,17 +27,9 @@ except ModuleNotFoundError:
 class RetNetRelPos(nn.Module):
     def __init__(self, args):
         super().__init__()
-        angle = 1.0 / (
-            10000
-            ** torch.linspace(
-                0, 1, args.decoder_embed_dim // args.decoder_retention_heads // 2
-            )
-        )
+        angle = 1.0 / (10000 ** torch.linspace(0, 1, args.decoder_embed_dim // args.decoder_retention_heads // 2))
         angle = angle.unsqueeze(-1).repeat(1, 2).flatten()
-        decay = torch.log(
-            1
-            - 2 ** (-5 - torch.arange(args.decoder_retention_heads, dtype=torch.float))
-        )
+        decay = torch.log(1 - 2 ** (-5 - torch.arange(args.decoder_retention_heads, dtype=torch.float)))
         self.register_buffer("angle", angle)
         self.register_buffer("decay", decay)
         self.recurrent_chunk_size = args.recurrent_chunk_size
@@ -53,14 +45,8 @@ class RetNetRelPos(nn.Module):
             cos = torch.cos(index[:, None] * self.angle[None, :])
 
             block_index = torch.arange(self.recurrent_chunk_size).to(self.decay)
-            mask = torch.tril(
-                torch.ones(self.recurrent_chunk_size, self.recurrent_chunk_size).to(
-                    self.decay
-                )
-            )
-            mask = torch.masked_fill(
-                block_index[:, None] - block_index[None, :], ~mask.bool(), float("inf")
-            )
+            mask = torch.tril(torch.ones(self.recurrent_chunk_size, self.recurrent_chunk_size).to(self.decay))
+            mask = torch.masked_fill(block_index[:, None] - block_index[None, :], ~mask.bool(), float("inf"))
             mask = torch.exp(mask * self.decay[:, None, None])
             mask = torch.nan_to_num(mask)
             scale = mask.sum(dim=-1, keepdim=True).sqrt()
@@ -76,9 +62,7 @@ class RetNetRelPos(nn.Module):
             sin = torch.sin(index[:, None] * self.angle[None, :])
             cos = torch.cos(index[:, None] * self.angle[None, :])
             mask = torch.tril(torch.ones(slen, slen).to(self.decay))
-            mask = torch.masked_fill(
-                index[:, None] - index[None, :], ~mask.bool(), float("inf")
-            )
+            mask = torch.masked_fill(index[:, None] - index[None, :], ~mask.bool(), float("inf"))
             mask = torch.exp(mask * self.decay[:, None, None])
             mask = torch.nan_to_num(mask)
             mask = mask / mask.sum(dim=-1, keepdim=True).sqrt()
@@ -100,9 +84,7 @@ class DecoderLayer(nn.Module):
         self.dropout_module = torch.nn.Dropout(args.dropout)
 
         if args.drop_path_rate > 0:
-            drop_path_prob = np.linspace(0, args.drop_path_rate, args.decoder_layers)[
-                depth
-            ]
+            drop_path_prob = np.linspace(0, args.drop_path_rate, args.decoder_layers)[depth]
             self.drop_path = DropPath(drop_path_prob)
         else:
             self.drop_path = None
@@ -229,11 +211,7 @@ class RetNetDecoder(nn.Module):
 
         self.embed_tokens = embed_tokens
 
-        if (
-            output_projection is None
-            and not args.no_output_layer
-            and args.vocab_size > 0
-        ):
+        if output_projection is None and not args.no_output_layer and args.vocab_size > 0:
             self.output_projection = self.build_output_projection(args)
         else:
             self.output_projection = output_projection
@@ -270,23 +248,13 @@ class RetNetDecoder(nn.Module):
         if args.deepnorm:
             init_scale = math.pow(8.0 * args.decoder_layers, 0.25)
             for name, p in self.named_parameters():
-                if (
-                    "fc1" in name
-                    or "fc2" in name
-                    or "out_proj" in name
-                    or "v_proj" in name
-                ):
+                if "fc1" in name or "fc2" in name or "out_proj" in name or "v_proj" in name:
                     p.data.div_(init_scale)
 
         if args.subln:
             init_scale = math.sqrt(math.log(args.decoder_layers * 2))
             for name, p in self.named_parameters():
-                if (
-                    "fc1" in name
-                    or "fc2" in name
-                    or "out_proj" in name
-                    or "v_proj" in name
-                ):
+                if "fc1" in name or "fc2" in name or "out_proj" in name or "v_proj" in name:
                     p.data.mul_(init_scale)
 
     def build_output_projection(
@@ -301,12 +269,8 @@ class RetNetDecoder(nn.Module):
             )
             output_projection.weight = self.embed_tokens.weight
         else:
-            output_projection = torch.nn.Linear(
-                args.decoder_embed_dim, args.vocab_size, bias=False
-            )
-            torch.nn.init.normal_(
-                output_projection.weight, mean=0, std=args.decoder_embed_dim**-0.5
-            )
+            output_projection = torch.nn.Linear(args.decoder_embed_dim, args.vocab_size, bias=False)
+            torch.nn.init.normal_(output_projection.weight, mean=0, std=args.decoder_embed_dim**-0.5)
         return output_projection
 
     def build_decoder_layer(self, args, depth, is_moe_layer=False):
@@ -357,19 +321,11 @@ class RetNetDecoder(nn.Module):
         **kwargs
     ):
         # embed tokens
-        x, _ = self.forward_embedding(
-            prev_output_tokens, token_embeddings, incremental_state
-        )
+        x, _ = self.forward_embedding(prev_output_tokens, token_embeddings, incremental_state)
         is_first_step = self.is_first_step(incremental_state)
 
-        if (
-            self.chunkwise_recurrent
-            and prev_output_tokens.size(1) % self.recurrent_chunk_size != 0
-        ):
-            padding_len = (
-                self.recurrent_chunk_size
-                - prev_output_tokens.size(1) % self.recurrent_chunk_size
-            )
+        if self.chunkwise_recurrent and prev_output_tokens.size(1) % self.recurrent_chunk_size != 0:
+            padding_len = self.recurrent_chunk_size - prev_output_tokens.size(1) % self.recurrent_chunk_size
             slen = prev_output_tokens.size(1) + padding_len
             x = F.pad(x, (0, 0, 0, padding_len))
         else:
@@ -404,10 +360,7 @@ class RetNetDecoder(nn.Module):
             l_aux.append(l_aux_i)
             inner_states.append(x)
 
-        if (
-            self.chunkwise_recurrent
-            and prev_output_tokens.size(1) % self.recurrent_chunk_size != 0
-        ):
+        if self.chunkwise_recurrent and prev_output_tokens.size(1) % self.recurrent_chunk_size != 0:
             x = x[:, : prev_output_tokens.size(1), :]
 
         if self.layer_norm is not None:
