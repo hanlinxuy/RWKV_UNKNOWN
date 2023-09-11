@@ -19,13 +19,16 @@ def trainpt(args, model, train_data, test_data_list):
     )
 
     for epoch in range(args.epoch_begin, args.epoch_count):
-        __tqdm = tqdm(len(train_data), ncols=50)
-        __tqdm.set_description(f"epoch: {epoch+1}/{args.epoch_count}")
-        for data in train_data:
-            # print("========",111)
+        __tqdm = tqdm(train_data, ncols=100)
+
+        my_loss_count = 0
+        for data in __tqdm:
+            data = [x.to("cuda") for x in data]
             loss, logits, layer_logits = model_engine(data)
+            my_loss_sum = loss.float().mean().item()
+            my_loss_count += 1
+            my_epoch_loss = my_loss_sum / my_loss_count
 
             model_engine.backward(loss)
             model_engine.step()
-            __tqdm.set_postfix(f"loss={round(loss,4)}")
-            __tqdm.update(1)
+            __tqdm.set_description(f"epoch: {epoch+1}/{args.epoch_count} loss: {round(my_epoch_loss,4)} ")

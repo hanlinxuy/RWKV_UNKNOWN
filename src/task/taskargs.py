@@ -55,10 +55,10 @@ class TaskArgs:
 
         with open(self.deepspeed_config, "r") as config_file:
             self.deepspeed_dialect = json.load(config_file)
-            
+
         self.deepspeed_dialect["train_micro_batch_size_per_gpu"] = self.micro_bsz
         # self.deepspeed_dialect["train_micro_batch_size_per_gpu"] = self.micro_bsz
-        
+
     def dump_config(self):
         pass
 

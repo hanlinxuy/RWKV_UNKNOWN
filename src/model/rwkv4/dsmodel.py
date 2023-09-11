@@ -403,10 +403,8 @@ class RWKV(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        if not hasattr(args, "dim_att"):
-            args.dim_att = args.n_embd
-        if not hasattr(args, "dim_ffn"):
-            args.dim_ffn = args.n_embd * 4
+        args.dim_att = args.n_embd
+        args.dim_ffn = args.n_embd * 4
         if not hasattr(args, "tiny_att_layer"):
             args.tiny_att_layer = -1
         if not hasattr(args, "tiny_att_dim"):
