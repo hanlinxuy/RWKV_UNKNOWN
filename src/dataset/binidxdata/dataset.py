@@ -26,13 +26,13 @@ class MyDataset(Dataset):
 
     def __getitem__(self, idx):
         args = self.args
-        rank = self.global_rank
-        epoch = self.real_epoch
-        world_size = self.world_size
+        # rank = self.global_rank
+        # epoch = self.real_epoch
+        # world_size = self.world_size
         args.rank_zero_debug(f"epoch {epoch} idx {idx} rank {rank}/{world_size}")
         ctx_len = args.ctx_len
         req_len = ctx_len + 1
-        magic_prime = args.magic_prime
+        # magic_prime = args.magic_prime
         data = self.data
 
         # cheat: pick a random spot in dataset

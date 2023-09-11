@@ -13,7 +13,9 @@ class TaskArgs:
     def __init__(self):
         self.name = "TaskArgs"
         self.parsed = False
-        self.global_rank = int(os.getenv("RANK", 0))
+        self.global_rank = int(os.getenv("RANK"))
+        self.world_size = int(os.getenv("WORLD_SIZE"))
+        self.rank = int(os.getenv("RANK"))
         parser = ArgumentParser("RWKV DEEPSPEED ONLY PROJECT")
         parser = self.add_all_arguments(parser)
         args = parser.parse_args()
